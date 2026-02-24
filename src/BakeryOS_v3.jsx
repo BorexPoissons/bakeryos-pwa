@@ -161,6 +161,12 @@ export default function App() {
   var userName    = currentUser ? currentUser.nom         : null;
   var permissions = currentUser ? (currentUser.permissions || defaultPerms(currentUser.role)) : null;
 
+  // viewRole = vue actuellement affichée (admin peut switcher entre toutes les vues)
+  const [viewRole, setViewRole] = useState(null);
+  var displayRole = viewRole || role;
+  // Reset viewRole si on se déconnecte/reconnecte
+  useEffect(function(){ setViewRole(null); }, [currentUser]);
+
   function updOrder(id, patch) {
     setOrders(prev => prev.map(o => o.id === id ? Object.assign({}, o, patch) : o));
   }
@@ -176,7 +182,6 @@ export default function App() {
     setChat(prev => prev.concat([{ id: Date.now(), role: role, from: from, text: text, t: hm(), ord: ord || null, mod: !!mod, mention: mention || null }]));
   }
 
-  // Nombre de messages d'autres rôles reçus depuis la dernière ouverture du chat
   var otherMsgs = chat.filter(function(m){ return m.role !== role; }).length;
   var unread    = Math.max(0, otherMsgs - seenCount);
 
@@ -196,19 +201,14 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      <Layout role={role} tenant={tenant} orders={orders} unread={unread} logoUrl={logoUrl} userStore={userStore} permissions={permissions}
+      <Layout role={role} viewRole={displayRole} tenant={tenant} orders={orders} unread={unread} logoUrl={logoUrl} userStore={userStore} permissions={permissions}
               userName={userName} chat={chat} sendMsg={sendMsg}
-              onChat={function(){
-                setChatOpen(function(v){
-                  if (!v) setSeenCount(chat.filter(function(m){ return m.role !== role; }).length);
-                  return !v;
-                });
-              }}
+              goRole={function(r){ setViewRole(r); }}
               onLogout={function(){ setCurrentUser(null); setChatOpen(false); setSeenCount(0); }}>
-        {role === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} />}
-        {role === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} />}
-        {role === "livreur"    && <Livreur    orders={orders} updOrder={updOrder} userStore={userStore} currentUser={currentUser} />}
-        {(role === "admin" || role === "gerant") && (
+        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} />}
+        {displayRole === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} />}
+        {displayRole === "livreur"    && <Livreur    orders={orders} updOrder={updOrder} userStore={userStore} currentUser={currentUser} />}
+        {(displayRole === "admin" || displayRole === "gerant" || (role==="admin" && !viewRole)) && (
           <Admin
             orders={orders} updOrder={updOrder} addOrder={addOrder}
             logoUrl={logoUrl} setLogoUrl={setLogoUrl}
@@ -221,32 +221,6 @@ export default function App() {
           />
         )}
       </Layout>
-      {permissions && permissions.features && permissions.features.indexOf("chat")!==-1 && chatOpen && <ChatPanel chat={chat} role={role} sendMsg={sendMsg} orders={orders} onClose={function(){ setSeenCount(chat.filter(function(m){ return m.role !== role; }).length); setChatOpen(false); }} />}
-      {permissions && permissions.features && permissions.features.indexOf("chat")!==-1 && !chatOpen && (
-        <button onClick={function(){ setChatOpen(true); }}
-          style={{position:"fixed",bottom:20,right:20,zIndex:500,
-                  display:"flex",alignItems:"center",gap:7,
-                  background:"rgba(30,14,5,0.82)",backdropFilter:"blur(8px)",
-                  border:"1px solid rgba(200,149,58,0.22)",borderRadius:28,
-                  padding:"7px 13px 7px 10px",cursor:"pointer",
-                  boxShadow:"0 4px 16px rgba(0,0,0,.18)",
-                  transition:"all .2s ease"}}
-          onMouseOver={function(e){ e.currentTarget.style.background="rgba(30,14,5,0.96)"; e.currentTarget.style.borderColor="rgba(200,149,58,0.5)"; }}
-          onMouseOut={function(e){ e.currentTarget.style.background="rgba(30,14,5,0.82)"; e.currentTarget.style.borderColor="rgba(200,149,58,0.22)"; }}>
-          <div style={{position:"relative",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(200,149,58,0.85)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            {unread > 0 && (
-              <span style={{position:"absolute",top:-5,right:-5,background:"#EF4444",color:"#fff",
-                            borderRadius:"50%",width:14,height:14,fontSize:8,fontWeight:700,
-                            display:"flex",alignItems:"center",justifyContent:"center",
-                            border:"1.5px solid rgba(30,14,5,0.9)"}}>{unread}</span>
-            )}
-          </div>
-          <span style={{fontSize:11,color:"rgba(253,248,240,0.6)",fontFamily:"'Outfit',sans-serif",fontWeight:500,letterSpacing:.3}}>Chat</span>
-        </button>
-      )}
     </>
   );
 }
@@ -481,8 +455,8 @@ function Layout(props) {
   var goRole  = props.goRole;
   var orders  = props.orders;
   var unread  = props.unread;
-  var onChat  = props.onChat;
-  var onLogout    = props.onLogout;
+  var goRole  = props.goRole  || function(){};
+  var viewRole= props.viewRole || role;
   var children    = props.children;
   var logoUrl     = props.logoUrl;
   var userName    = props.userName    || null;
@@ -543,13 +517,13 @@ function Layout(props) {
           var active = role === item.id;
           return (
             <div key={item.id} className="nb"
-              onClick={function(){ if(navItems.length > 1) goRole(item.id); setMOpen(false); }}
+              onClick={function(){ goRole(item.id); setMOpen(false); }}
               style={{display:"flex",alignItems:"center",gap:8,padding:"10px 10px",borderRadius:8,
                       marginBottom:2,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:12,
-                      background: active ? "rgba(200,149,58,.15)" : "transparent",
-                      color:      active ? "#C8953A" : "rgba(253,248,240,.58)",
-                      fontWeight: active ? 600 : 400,
-                      border:     "1px solid " + (active ? "rgba(200,149,58,.25)" : "transparent")}}>
+                      background: viewRole === item.id ? "rgba(200,149,58,.15)" : "transparent",
+                      color:      viewRole === item.id ? "#C8953A" : "rgba(253,248,240,.58)",
+                      fontWeight: viewRole === item.id ? 600 : 400,
+                      border:     "1px solid " + (viewRole === item.id ? "rgba(200,149,58,.25)" : "transparent")}}>
               <span style={{fontSize:14}}>{item.icon}</span>
               <span style={{flex:1}}>{item.label}</span>
               {item.prot && <span style={{fontSize:9,color:"rgba(253,248,240,.2)"}}>🔐</span>}
@@ -557,7 +531,7 @@ function Layout(props) {
                 <span style={{background: item.id==="admin" ? "#EF4444" : "#C8953A",
                               color:"#fff",borderRadius:18,padding:"1px 6px",fontSize:10,fontWeight:700}}>{item.badge}</span>
               )}
-              {active && <span style={{width:5,height:5,borderRadius:"50%",background:"#C8953A",flexShrink:0}} />}
+              {viewRole === item.id && <span style={{width:5,height:5,borderRadius:"50%",background:"#C8953A",flexShrink:0}} />}
             </div>
           );
         })}
@@ -677,10 +651,6 @@ function Layout(props) {
             <span style={{fontFamily:"'Outfit',sans-serif",fontSize:18,color:"#FDF8F0",fontWeight:700}}>BakeryOS</span>
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <button onClick={onChat} style={{background:"none",border:"none",color:"#C8953A",fontSize:16,cursor:"pointer",position:"relative",padding:"3px 5px"}}>
-              💬
-              {unread > 0 && <span style={{position:"absolute",top:0,right:0,background:"#EF4444",color:"#fff",borderRadius:"50%",width:12,height:12,fontSize:8,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>{unread}</span>}
-            </button>
             <button onClick={function(){ setMOpen(function(v){ return !v; }); }} style={{background:"none",border:"none",color:"#C8953A",fontSize:20,cursor:"pointer"}}>☰</button>
           </div>
         </div>
@@ -1418,13 +1388,9 @@ function Vendeuse(props) {
   const [showReceipt,setShowReceipt]= useState(false);
   const [showClient, setShowClient] = useState(false);
   const [paidAnim,   setPaidAnim]   = useState(false);
-  const [chatMsg,    setChatMsg]    = useState("");   // message chat inline POS
-  const [orderDone,  setOrderDone]  = useState(false); // confirmation "Commander"
-  const chatEndRef = useRef(null);
+  const [orderDone,  setOrderDone]  = useState(false);
 
-  useEffect(function(){
-    if (chatEndRef.current) chatEndRef.current.scrollIntoView({behavior:"smooth"});
-  }, [chat]);
+  useEffect(function(){}, [chat]);
 
   var CATS_ACTIVE = ["Tous"].concat(
     activeProd.reduce(function(acc,p){
