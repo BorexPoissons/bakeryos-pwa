@@ -159,7 +159,7 @@ export default function App() {
   var role        = currentUser ? currentUser.role        : null;
   var userStore   = currentUser ? currentUser.store       : null;
   var userName    = currentUser ? currentUser.nom         : null;
-  var permissions = currentUser ? (currentUser.permissions || defaultPerms(currentUser.role)) : null;
+  var permissions = currentUser ? (currentUser.permissions || defaultPerms(currentUser.role)) : { screens:[], adminTabs:[], features:[] };
 
   // viewRole = vue actuellement affichée (admin peut switcher entre toutes les vues)
   const [viewRole, setViewRole] = useState(null);
@@ -512,7 +512,6 @@ function Layout(props) {
       <div style={{padding:"0 8px",flex:1}}>
         <div style={{fontSize:9,color:"rgba(253,248,240,.2)",letterSpacing:2,textTransform:"uppercase",padding:"0 7px",marginBottom:5}}>Navigation</div>
         {navItems.map(function(item){
-          var active = role === item.id;
           return (
             <div key={item.id} className="nb"
               onClick={function(){ goRole(item.id); setMOpen(false); }}
@@ -1387,8 +1386,6 @@ function Vendeuse(props) {
   const [showClient, setShowClient] = useState(false);
   const [paidAnim,   setPaidAnim]   = useState(false);
   const [orderDone,  setOrderDone]  = useState(false);
-
-  useEffect(function(){}, [chat]);
 
   var CATS_ACTIVE = ["Tous"].concat(
     activeProd.reduce(function(acc,p){
