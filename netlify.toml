@@ -1,0 +1,38 @@
+# ── Build ────────────────────────────────────────────────────────────────────
+[build]
+  command     = "npm run build"
+  publish     = "dist"
+  environment = { NODE_VERSION = "20" }
+
+# ── Redirections SPA ─────────────────────────────────────────────────────────
+# Toutes les URLs → index.html (React Router / navigation directe)
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ── Headers de sécurité & performance ────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options         = "DENY"
+    X-Content-Type-Options  = "nosniff"
+    Referrer-Policy         = "strict-origin-when-cross-origin"
+    Permissions-Policy      = "camera=(), microphone=(), geolocation=()"
+
+# Cache long pour les assets hachés (immutables)
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Service worker : jamais en cache navigateur (doit être rechargé à chaque visite)
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/workbox-*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

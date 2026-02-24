@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ── Titre & description ── -->
+    <title>BakeryOS</title>
+    <meta name="description" content="Gestion multi-magasins pour boulangeries et pâtisseries" />
+
+    <!-- ── PWA iOS (Safari ne lit pas le manifest.json pour certaines metas) ── -->
+    <meta name="apple-mobile-web-app-capable"          content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title"            content="BakeryOS" />
+
+    <!-- Icônes iOS (Apple ne lit pas le manifest pour les icônes) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-128.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/icons/icon-128.png" />
+
+    <!-- Splash screens iOS (optionnel — améliore l'expérience au lancement) -->
+    <!-- Génération automatique possible avec @vite-pwa/assets-generator -->
+
+    <!-- ── Couleur de thème (barre navigateur Android) ── -->
+    <meta name="theme-color" content="#C8953A" />
+    <meta name="msapplication-TileColor" content="#1E0E05" />
+
+    <!-- ── Favicon ── -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-72.png" />
+
+    <!-- ── Polices Google (préchargées) ── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  </head>
+
+  <body>
+    <noscript>
+      <div style="font-family:sans-serif;text-align:center;padding:40px;color:#1E0E05">
+        BakeryOS nécessite JavaScript pour fonctionner.
+      </div>
+    </noscript>
+
+    <div id="root"></div>
+
+    <!-- Le manifest est injecté automatiquement par vite-plugin-pwa -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
