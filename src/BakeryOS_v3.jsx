@@ -452,11 +452,10 @@ function LoginScreen(props) {
 function Layout(props) {
   var role    = props.role;
   var tenant  = props.tenant;
-  var goRole  = props.goRole;
-  var orders  = props.orders;
-  var unread  = props.unread;
   var goRole  = props.goRole  || function(){};
   var viewRole= props.viewRole || role;
+  var orders  = props.orders;
+  var unread  = props.unread;
   var children    = props.children;
   var logoUrl     = props.logoUrl;
   var userName    = props.userName    || null;
