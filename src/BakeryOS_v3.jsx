@@ -143,7 +143,11 @@ export default function App() {
   const [chat,        setChat]        = useState(C0);
   const [chatOpen,    setChatOpen]    = useState(false);
   const [logoUrl,     setLogoUrl]     = useState(function(){ return localStorage.getItem("bakery_logo") || null; });
-  const [seenCount,   setSeenCount]   = useState(0); // nb messages d'autres rôles déjà vus
+  const [seenCount,   setSeenCount]   = useState(0);
+  const [catalogue,   setCatalogue]   = useState(PRODUCTS.map(function(p){ return Object.assign({},p,{active:true,stock:0}); }));
+  const [sales,       setSales]       = useState([]);
+
+  function addSale(sale) { setSales(function(prev){ return [sale].concat(prev); }); }
 
   // Persist tenant & logo across page reloads
   useEffect(function(){ localStorage.setItem("bakery_tenant", tenant); }, [tenant]);
@@ -193,16 +197,15 @@ export default function App() {
     <>
       <style>{CSS}</style>
       <Layout role={role} tenant={tenant} orders={orders} unread={unread} logoUrl={logoUrl} userStore={userStore} permissions={permissions}
-              userName={userName}
+              userName={userName} chat={chat} sendMsg={sendMsg}
               onChat={function(){
                 setChatOpen(function(v){
-                  // À l'ouverture : marquer tous les messages actuels comme vus
                   if (!v) setSeenCount(chat.filter(function(m){ return m.role !== role; }).length);
                   return !v;
                 });
               }}
               onLogout={function(){ setCurrentUser(null); setChatOpen(false); setSeenCount(0); }}>
-        {role === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} />}
+        {role === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} />}
         {role === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} />}
         {role === "livreur"    && <Livreur    orders={orders} updOrder={updOrder} userStore={userStore} currentUser={currentUser} />}
         {(role === "admin" || role === "gerant") && (
@@ -210,6 +213,8 @@ export default function App() {
             orders={orders} updOrder={updOrder} addOrder={addOrder}
             logoUrl={logoUrl} setLogoUrl={setLogoUrl}
             tenant={tenant}  setTenant={setTenant}
+            catalogue={catalogue} setCatalogue={setCatalogue}
+            sales={sales}
             userStore={role==="admin"?null:userStore}
             users={users} setUsers={setUsers}
             permissions={permissions}
@@ -482,19 +487,23 @@ function Layout(props) {
   var logoUrl     = props.logoUrl;
   var userName    = props.userName    || null;
   var userStore   = props.userStore   || null;
+  var chat        = props.chat        || [];
+  var sendMsg     = props.sendMsg     || function(){};
   var permissions = props.permissions || { screens:[], adminTabs:[], features:[] };
   var canScreen = function(id){ return (permissions.screens||[]).indexOf(id)>=0; };
   var canTab    = function(id){ return (permissions.adminTabs||[]).indexOf(id)>=0; };
   var canFeat   = function(id){ return (permissions.features||[]).indexOf(id)>=0; };
 
-  const [mobile, setMobile] = useState(false);
-  const [mOpen,  setMOpen]  = useState(false);
+  const [mobile,       setMobile]     = useState(false);
+  const [mOpen,        setMOpen]      = useState(false);
+  const [sideChat,     setSideChat]   = useState(false);
+  const [chatInput,    setChatInput]  = useState("");
+  const sideChatEndRef = useRef(null);
 
   useEffect(function(){
-    function check(){ setMobile(window.innerWidth < 700); }
-    check();
-    window.addEventListener("resize", check);
-    return function(){ window.removeEventListener("resize", check); };
+    if (sideChat && sideChatEndRef.current)
+      sideChatEndRef.current.scrollIntoView({behavior:"smooth"});
+  }, [chat, sideChat]);
   }, []);
 
   var prodN = orders.filter(function(o){ return o.status==="production"; }).length;
@@ -554,13 +563,82 @@ function Layout(props) {
         })}
         <div style={{height:1,background:"rgba(255,255,255,.07)",margin:"8px 2px"}} />
         {canChat && (
-          <div className="nb" onClick={onChat}
-            style={{display:"flex",alignItems:"center",gap:8,padding:"10px 10px",borderRadius:8,
-                    cursor:"pointer",color:"rgba(253,248,240,.58)",fontSize:12,
-                    fontFamily:"'Outfit',sans-serif",border:"1px solid transparent"}}>
-            <span style={{fontSize:14}}>💬</span>
-            <span style={{flex:1}}>Chat Production</span>
-            {unread > 0 && <span style={{background:"#EF4444",color:"#fff",borderRadius:18,padding:"1px 6px",fontSize:10,fontWeight:700}}>{unread}</span>}
+          <div>
+            {/* Bouton toggle */}
+            <div className="nb" onClick={function(){ setSideChat(function(v){ return !v; }); }}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"10px 10px",borderRadius:8,
+                      cursor:"pointer",color: sideChat ? "#C8953A" : "rgba(253,248,240,.58)",fontSize:12,
+                      fontFamily:"'Outfit',sans-serif",
+                      background: sideChat ? "rgba(200,149,58,.1)" : "transparent",
+                      border:"1px solid "+(sideChat?"rgba(200,149,58,.2)":"transparent"),
+                      transition:"all .18s"}}>
+              <span style={{fontSize:14}}>💬</span>
+              <span style={{flex:1}}>Chat Production</span>
+              {!sideChat && unread > 0 && <span style={{background:"#EF4444",color:"#fff",borderRadius:18,padding:"1px 6px",fontSize:10,fontWeight:700}}>{unread}</span>}
+              <span style={{fontSize:10,opacity:.4,transition:"transform .2s",transform:sideChat?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
+            </div>
+
+            {/* Chat déplié */}
+            {sideChat && (
+              <div style={{margin:"4px 4px 8px",borderRadius:10,overflow:"hidden",
+                           border:"1px solid rgba(255,255,255,.07)",animation:"fadeUp .2s ease"}}>
+                {/* Messages */}
+                <div style={{maxHeight:220,overflowY:"auto",padding:"8px 8px 4px",display:"flex",flexDirection:"column",gap:5,
+                             background:"rgba(0,0,0,.15)"}}>
+                  {chat.slice(-15).map(function(m){
+                    var isMe = m.role === role;
+                    return (
+                      <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start"}}>
+                        {!isMe && (
+                          <div style={{fontSize:8,color:"rgba(253,248,240,.25)",marginBottom:2,paddingLeft:2}}>{m.from}</div>
+                        )}
+                        <div style={{maxWidth:"90%",padding:"5px 8px",
+                                     borderRadius:isMe?"9px 3px 9px 9px":"3px 9px 9px 9px",
+                                     background: isMe ? "rgba(200,149,58,.25)"
+                                                : m.mod ? "rgba(239,68,68,.2)"
+                                                : "rgba(255,255,255,.07)",
+                                     border: m.mod ? "1px solid rgba(239,68,68,.3)" : "none"}}>
+                          {m.mod && <div style={{fontSize:8,fontWeight:700,color:"#FCA5A5",marginBottom:1}}>🔔 MODIF</div>}
+                          {m.ord  && <div style={{fontSize:8,color:"#C8953A",fontWeight:600,marginBottom:1}}>{m.ord}</div>}
+                          <div style={{fontSize:10,color:isMe?"rgba(253,248,240,.85)":"rgba(253,248,240,.65)",lineHeight:1.4}}>{m.text}</div>
+                          <div style={{fontSize:7,opacity:.3,textAlign:"right",marginTop:1,color:"#FDF8F0"}}>{m.t}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {chat.length === 0 && (
+                    <div style={{textAlign:"center",color:"rgba(253,248,240,.2)",fontSize:10,padding:"8px 0"}}>Aucun message</div>
+                  )}
+                  <div ref={sideChatEndRef} />
+                </div>
+                {/* Input */}
+                <div style={{display:"flex",gap:4,padding:"6px 6px",background:"rgba(0,0,0,.2)"}}>
+                  <input value={chatInput}
+                    onChange={function(e){ setChatInput(e.target.value); }}
+                    onKeyDown={function(e){
+                      if (e.key==="Enter" && chatInput.trim()){
+                        sendMsg(chatInput.trim(), null, false, null);
+                        setChatInput("");
+                      }
+                    }}
+                    placeholder="Message…"
+                    style={{flex:1,padding:"5px 8px",borderRadius:7,border:"1px solid rgba(255,255,255,.1)",
+                            background:"rgba(255,255,255,.06)",color:"rgba(253,248,240,.8)",
+                            fontSize:11,outline:"none",fontFamily:"'Outfit',sans-serif",minWidth:0}} />
+                  <button onClick={function(){
+                      if (!chatInput.trim()) return;
+                      sendMsg(chatInput.trim(), null, false, null);
+                      setChatInput("");
+                    }}
+                    style={{padding:"5px 9px",borderRadius:7,border:"none",background:"rgba(200,149,58,.3)",
+                            color:"#C8953A",fontSize:13,cursor:"pointer",flexShrink:0,transition:"all .15s"}}
+                    onMouseOver={function(e){ e.currentTarget.style.background="rgba(200,149,58,.5)"; }}
+                    onMouseOut={function(e){ e.currentTarget.style.background="rgba(200,149,58,.3)"; }}>
+                    ↑
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1026,30 +1104,341 @@ function EditModal(props) {
   );
 }
 
+/* ─── POS TACTILE ─────────────────────────────────────────────── */
+function PayModal(props) {
+  var total    = props.total;
+  var cart     = props.cart;
+  var onPaid   = props.onPaid;
+  var onClose  = props.onClose;
+  var tenant   = props.tenant;
+
+  const [method,   setMethod]   = useState("card");   // "card" | "cash" | "split"
+  const [given,    setGiven]    = useState("");        // montant donné en espèces
+  const [step,     setStep]     = useState("choose");  // "choose" | "processing" | "done"
+  const [splitCard,setSplitCard]= useState("");
+
+  var givenNum    = parseFloat(given)  || 0;
+  var splitNum    = parseFloat(splitCard) || 0;
+  var change      = method === "cash"  ? Math.max(0, givenNum - total)
+                  : method === "split" ? Math.max(0, givenNum - (total - splitNum))
+                  : 0;
+  var cashNeeded  = method === "split" ? total - splitNum : total;
+  var cashValid   = method === "cash"  ? givenNum >= total
+                  : method === "split" ? givenNum >= cashNeeded && splitNum > 0 && splitNum < total
+                  : true;
+
+  function pay() {
+    setStep("processing");
+    setTimeout(function(){
+      setStep("done");
+      setTimeout(function(){
+        onPaid({
+          method:   method,
+          cashGiven: givenNum,
+          cardAmount: method === "split" ? splitNum : method === "card" ? total : 0,
+          change:   change,
+        });
+      }, 1200);
+    }, method === "card" || method === "split" ? 2000 : 400);
+  }
+
+  var QUICK = [0.50,1,2,5,10,20,50,100];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,.65)",backdropFilter:"blur(6px)",
+                 display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:22,width:"100%",maxWidth:460,boxShadow:"0 32px 80px rgba(0,0,0,.35)",overflow:"hidden",animation:"pinIn .25s ease"}}>
+
+        {/* Header */}
+        <div style={{background:"#1E0E05",padding:"18px 22px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"#FDF8F0",fontFamily:"'Outfit',sans-serif",fontSize:13,opacity:.6,marginBottom:2}}>Total à encaisser</div>
+            <div style={{color:"#C8953A",fontFamily:"'Outfit',sans-serif",fontSize:34,fontWeight:800,letterSpacing:-1}}>
+              CHF {total.toFixed(2)}
+            </div>
+          </div>
+          {step === "choose" && (
+            <button onClick={onClose} style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:"50%",width:36,height:36,color:"rgba(253,248,240,.5)",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          )}
+        </div>
+
+        {/* Processing */}
+        {step === "processing" && (
+          <div style={{padding:"48px 22px",textAlign:"center"}}>
+            <div style={{fontSize:48,marginBottom:16,animation:"spin 1s linear infinite",display:"inline-block"}}>
+              {method === "card" || method === "split" ? "💳" : "🪙"}
+            </div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:18,fontWeight:700,color:"#1E0E05",marginBottom:6}}>
+              {method === "card" ? "Attente du terminal…" : method === "split" ? "Traitement paiement mixte…" : "Calcul de la monnaie…"}
+            </div>
+            <div style={{fontSize:12,color:"#8B7355"}}>
+              {method === "card" || method === "split" ? "Présentez la carte au lecteur SumUp" : "Vérification…"}
+            </div>
+          </div>
+        )}
+
+        {/* Done */}
+        {step === "done" && (
+          <div style={{padding:"40px 22px",textAlign:"center"}}>
+            <div style={{fontSize:56,marginBottom:12,animation:"pop .4s ease"}}>✅</div>
+            <div style={{fontFamily:"'Outfit',sans-serif",fontSize:22,fontWeight:800,color:"#065F46",marginBottom:8}}>Paiement accepté !</div>
+            {change > 0 && (
+              <div style={{background:"#D1FAE5",borderRadius:12,padding:"12px 20px",display:"inline-block",marginTop:4}}>
+                <div style={{fontSize:11,color:"#065F46",fontWeight:600,marginBottom:2}}>MONNAIE À RENDRE</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:28,fontWeight:800,color:"#065F46"}}>CHF {change.toFixed(2)}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Choose method */}
+        {step === "choose" && (
+          <div style={{padding:"18px 22px"}}>
+            {/* Mode selector */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:18}}>
+              {[["card","💳","Carte"],["cash","💵","Espèces"],["split","🔀","Mixte"]].map(function(m){
+                var active = method === m[0];
+                return (
+                  <button key={m[0]} onClick={function(){ setMethod(m[0]); setGiven(""); setSplitCard(""); }}
+                    style={{padding:"12px 8px",borderRadius:12,border:"2px solid "+(active?"#C8953A":"#EDE0D0"),
+                            background:active?"#FDF0D8":"#fff",cursor:"pointer",textAlign:"center",transition:"all .15s"}}>
+                    <div style={{fontSize:22,marginBottom:4}}>{m[1]}</div>
+                    <div style={{fontSize:11,fontWeight:active?700:500,color:active?"#92400E":"#5C4A32",fontFamily:"'Outfit',sans-serif"}}>{m[2]}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Card */}
+            {method === "card" && (
+              <div style={{background:"#F7F3EE",borderRadius:12,padding:"16px",textAlign:"center",marginBottom:16}}>
+                <div style={{fontSize:13,color:"#5C4A32",marginBottom:4}}>Terminal SumUp · En attente</div>
+                <div style={{fontSize:11,color:"#8B7355"}}>Présentez la carte, tapez ou insérez</div>
+              </div>
+            )}
+
+            {/* Cash */}
+            {method === "cash" && (
+              <div style={{marginBottom:16}}>
+                <label style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Montant reçu (CHF)</label>
+                <input type="number" value={given} onChange={function(e){ setGiven(e.target.value); }}
+                  placeholder={"Montant ≥ "+total.toFixed(2)}
+                  style={{width:"100%",padding:"12px",borderRadius:10,border:"2px solid "+(givenNum>=total&&given?"#C8953A":"#EDE0D0"),
+                          fontSize:20,fontWeight:700,textAlign:"center",outline:"none",fontFamily:"'Outfit',sans-serif",
+                          color:"#1E0E05",background:"#fff",transition:"border-color .15s"}} />
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>
+                  {QUICK.map(function(v){
+                    return (
+                      <button key={v} onClick={function(){ setGiven(String(v)); }}
+                        style={{padding:"5px 10px",borderRadius:8,border:"1px solid #EDE0D0",background:given==String(v)?"#FDF0D8":"#fff",
+                                color:given==String(v)?"#92400E":"#5C4A32",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",transition:"all .12s"}}>
+                        {v.toFixed(2)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {given && givenNum >= total && (
+                  <div style={{background:"#D1FAE5",borderRadius:10,padding:"10px 14px",marginTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:12,color:"#065F46",fontWeight:600}}>Monnaie à rendre</span>
+                    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:20,fontWeight:800,color:"#065F46"}}>CHF {change.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Split */}
+            {method === "split" && (
+              <div style={{marginBottom:16}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                  <div>
+                    <label style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:5}}>Carte (CHF)</label>
+                    <input type="number" value={splitCard} onChange={function(e){ setSplitCard(e.target.value); }}
+                      placeholder="0.00" min="0" max={total}
+                      style={{width:"100%",padding:"10px",borderRadius:10,border:"2px solid #EDE0D0",fontSize:16,fontWeight:700,textAlign:"center",outline:"none",fontFamily:"'Outfit',sans-serif",color:"#1E0E05"}} />
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:5}}>Espèces (CHF)</label>
+                    <input type="number" value={given} onChange={function(e){ setGiven(e.target.value); }}
+                      placeholder={splitNum > 0 ? "≥ "+(total-splitNum).toFixed(2) : "0.00"}
+                      style={{width:"100%",padding:"10px",borderRadius:10,border:"2px solid #EDE0D0",fontSize:16,fontWeight:700,textAlign:"center",outline:"none",fontFamily:"'Outfit',sans-serif",color:"#1E0E05"}} />
+                  </div>
+                </div>
+                {splitNum > 0 && (
+                  <div style={{background:"#F7F3EE",borderRadius:10,padding:"8px 12px",fontSize:11,color:"#5C4A32",display:"flex",justifyContent:"space-between"}}>
+                    <span>Reste en espèces</span>
+                    <span style={{fontWeight:700}}>CHF {Math.max(0,total-splitNum).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button onClick={pay} disabled={!cashValid}
+              style={{width:"100%",padding:"15px",borderRadius:12,border:"none",
+                      background:cashValid?"linear-gradient(135deg,#C8953A,#a07228)":"#D5C4B0",
+                      color:cashValid?"#1E0E05":"#fff",fontSize:16,fontWeight:800,
+                      cursor:cashValid?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif",
+                      transition:"all .18s",letterSpacing:.3}}>
+              {method==="card" ? "💳 Lancer le paiement carte" : method==="cash" ? "💵 Encaisser" : "🔀 Confirmer paiement mixte"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReceiptModal(props) {
+  var sale   = props.sale;
+  var tenant = props.tenant;
+  var onClose= props.onClose;
+  if (!sale) return null;
+  var methodLabel = sale.payInfo.method === "card" ? "Carte bancaire" : sale.payInfo.method === "cash" ? "Espèces" : "Paiement mixte";
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:950,background:"rgba(0,0,0,.6)",backdropFilter:"blur(4px)",
+                 display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+         onClick={onClose}>
+      <div onClick={function(e){e.stopPropagation();}}
+        style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:320,boxShadow:"0 24px 60px rgba(0,0,0,.3)",overflow:"hidden",animation:"fadeUp .25s ease"}}>
+        <div style={{background:"#1E0E05",padding:"18px 20px",textAlign:"center"}}>
+          <div style={{fontSize:22,marginBottom:4}}>🥐</div>
+          <div style={{color:"#C8953A",fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700}}>{tenant}</div>
+          <div style={{color:"rgba(253,248,240,.4)",fontSize:10,marginTop:2}}>{sale.time} · {sale.store}</div>
+        </div>
+        <div style={{padding:"14px 20px",borderBottom:"1px dashed #EDE0D0"}}>
+          {sale.items.map(function(i,idx){
+            return (
+              <div key={idx} style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:12}}>
+                <span style={{color:"#5C4A32"}}>{i.qty}× {i.name}</span>
+                <span style={{fontWeight:600,color:"#1E0E05"}}>CHF {(i.price*i.qty).toFixed(2)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{padding:"12px 20px",borderBottom:"1px dashed #EDE0D0"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+            <span style={{fontSize:13,color:"#8B7355"}}>Total</span>
+            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:18,fontWeight:800,color:"#C8953A"}}>CHF {sale.total.toFixed(2)}</span>
+          </div>
+          <div style={{fontSize:11,color:"#8B7355"}}>{methodLabel}
+            {sale.payInfo.change > 0 && <span style={{color:"#065F46",fontWeight:600}}> · Rendu CHF {sale.payInfo.change.toFixed(2)}</span>}
+          </div>
+        </div>
+        <div style={{padding:"14px 20px",textAlign:"center"}}>
+          <div style={{fontSize:10,color:"#B8A898",marginBottom:8}}>Merci de votre visite ! 🙏</div>
+          <button onClick={onClose}
+            style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:"#1E0E05",color:"#FDF8F0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientDisplay(props) {
+  var cart   = props.cart;
+  var total  = props.total;
+  var tenant = props.tenant;
+  var onClose= props.onClose;
+  var paid   = props.paid;
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:800,background:"#1E0E05",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
+      <button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,.08)",border:"none",borderRadius:"50%",width:36,height:36,color:"rgba(253,248,240,.4)",fontSize:18,cursor:"pointer"}}>✕</button>
+      <div style={{fontSize:48,marginBottom:8}}>🥐</div>
+      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:26,color:"#C8953A",fontWeight:800,marginBottom:32,letterSpacing:-1}}>{tenant}</div>
+
+      {paid ? (
+        <div style={{textAlign:"center",animation:"fadeUp .4s ease"}}>
+          <div style={{fontSize:72,marginBottom:16}}>✅</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:28,color:"#D1FAE5",fontWeight:800}}>Merci !</div>
+          <div style={{color:"rgba(253,248,240,.5)",fontSize:14,marginTop:8}}>Bonne dégustation 🙏</div>
+        </div>
+      ) : cart.length === 0 ? (
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:48,marginBottom:12,opacity:.3}}>🧺</div>
+          <div style={{color:"rgba(253,248,240,.3)",fontSize:16}}>En attente de commande…</div>
+        </div>
+      ) : (
+        <div style={{width:"100%",maxWidth:480}}>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:28}}>
+            {cart.map(function(i,idx){
+              return (
+                <div key={idx} style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+                                       background:"rgba(255,255,255,.06)",borderRadius:14,padding:"12px 18px",
+                                       animation:"slideIn .2s "+(idx*.06)+"s both"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <span style={{fontSize:28}}>{i.emoji}</span>
+                    <div>
+                      <div style={{fontFamily:"'Outfit',sans-serif",color:"#FDF8F0",fontSize:15,fontWeight:600}}>{i.name}</div>
+                      <div style={{color:"rgba(253,248,240,.4)",fontSize:12}}>× {i.qty}</div>
+                    </div>
+                  </div>
+                  <div style={{fontFamily:"'Outfit',sans-serif",color:"#C8953A",fontSize:18,fontWeight:700}}>CHF {(i.price*i.qty).toFixed(2)}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{background:"rgba(200,149,58,.12)",borderRadius:16,padding:"20px 24px",border:"1px solid rgba(200,149,58,.25)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{color:"rgba(253,248,240,.6)",fontSize:14}}>TOTAL</span>
+            <span style={{fontFamily:"'Outfit',sans-serif",color:"#C8953A",fontSize:38,fontWeight:800}}>CHF {total.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── VENDEUSE ────────────────────────────────────────────────── */
 function Vendeuse(props) {
-  var orders   = props.orders;
-  var addOrder = props.addOrder;
-  var updOrder = props.updOrder;
-  var sendMsg  = props.sendMsg;
+  var orders    = props.orders;
+  var addOrder  = props.addOrder;
+  var updOrder  = props.updOrder;
+  var sendMsg   = props.sendMsg;
+  var userStore = props.userStore;
+  var catalogue = props.catalogue || PRODUCTS.map(function(p){ return Object.assign({},p,{active:true}); });
+  var sales     = props.sales     || [];
+  var addSale   = props.addSale   || function(){};
+  var chat      = props.chat      || [];
 
-  const [tab,      setTab]      = useState("pos");
-  const [search,   setSearch]   = useState("");
-  const [cat,      setCat]      = useState("Tous");
-  const [cart,     setCart]     = useState([]);
-  const [client,   setClient]   = useState("");
-  const [store,    setStore]    = useState(STORES[0]);
-  const [note,     setNote]     = useState("");
-  const [done,     setDone]     = useState(false);
-  const [edit,     setEdit]     = useState(null);
-  const [saved,    setSaved]    = useState(false);
-  const [cartErr,  setCartErr]  = useState(""); // message d'erreur validation panier
+  var activeProd = catalogue.filter(function(p){ return p.active; });
 
-  var filtered = PRODUCTS.filter(function(p){
-    return (cat==="Tous" || p.category===cat) && p.name.toLowerCase().indexOf(search.toLowerCase()) >= 0;
+  const [tab,        setTab]        = useState("pos");
+  const [search,     setSearch]     = useState("");
+  const [cat,        setCat]        = useState("Tous");
+  const [cart,       setCart]       = useState([]);
+  const [client,     setClient]     = useState("");
+  const [store,      setStore]      = useState(userStore || STORES[0]);
+  const [note,       setNote]       = useState("");
+  const [edit,       setEdit]       = useState(null);
+  const [saved,      setSaved]      = useState(false);
+  const [cartErr,    setCartErr]    = useState("");
+  const [showPay,    setShowPay]    = useState(false);
+  const [lastSale,   setLastSale]   = useState(null);
+  const [showReceipt,setShowReceipt]= useState(false);
+  const [showClient, setShowClient] = useState(false);
+  const [paidAnim,   setPaidAnim]   = useState(false);
+  const [chatMsg,    setChatMsg]    = useState("");   // message chat inline POS
+  const [orderDone,  setOrderDone]  = useState(false); // confirmation "Commander"
+  const chatEndRef = useRef(null);
+
+  useEffect(function(){
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({behavior:"smooth"});
+  }, [chat]);
+
+  var CATS_ACTIVE = ["Tous"].concat(
+    activeProd.reduce(function(acc,p){
+      if (acc.indexOf(p.category) < 0) acc.push(p.category); return acc;
+    }, [])
+  );
+
+  var filtered = activeProd.filter(function(p){
+    return (cat==="Tous" || p.category===cat) &&
+           p.name.toLowerCase().indexOf(search.toLowerCase()) >= 0;
   });
 
   function addToCart(p) {
+    setCartErr("");
     setCart(function(prev){
       var ex = prev.find(function(i){ return i.id===p.id; });
       return ex ? prev.map(function(i){ return i.id===p.id ? Object.assign({},i,{qty:i.qty+1}) : i; })
@@ -1060,28 +1449,72 @@ function Vendeuse(props) {
     if (q <= 0) setCart(function(prev){ return prev.filter(function(i){ return i.id!==id; }); });
     else setCart(function(prev){ return prev.map(function(i){ return i.id===id ? Object.assign({},i,{qty:q}) : i; }); });
   }
+  function removeItem(id) { setCart(function(prev){ return prev.filter(function(i){ return i.id!==id; }); }); }
+  function clearCart() { setCart([]); setClient(""); setNote(""); }
+
   var total = cart.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
 
-  function placeOrder() {
-    if (!client.trim()) {
-      setCartErr("⚠️ Veuillez saisir le nom du client");
-      setTimeout(function(){ setCartErr(""); }, 3000);
-      return;
-    }
+  function handlePay() {
     if (!cart.length) {
-      setCartErr("⚠️ Ajoutez au moins un article au panier");
+      setCartErr("⚠️ Ajoutez au moins un article");
       setTimeout(function(){ setCartErr(""); }, 3000);
       return;
     }
-    setCartErr("");
+    setShowPay(true);
+  }
+
+  function handleOrder() {
+    if (!cart.length) {
+      setCartErr("⚠️ Ajoutez au moins un article");
+      setTimeout(function(){ setCartErr(""); }, 3000);
+      return;
+    }
+    if (!client.trim()) {
+      setCartErr("⚠️ Saisissez le nom du client pour commander");
+      setTimeout(function(){ setCartErr(""); }, 3000);
+      return;
+    }
     addOrder({
-      id: "CMD-" + Date.now(),
-      client:client, store:store, note:note, status:"attente", priority:"normal", modReq:false,
-      items: cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price}; }),
-      time: hm(), total:total, dMethod:null, dest:null,
+      id:       "CMD-" + Date.now(),
+      client:   client, store: store, note: note,
+      status:   "attente", priority: "normal", modReq: false,
+      items:    cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price}; }),
+      time:     hm(), total: total, dMethod: null, dest: null,
     });
-    setDone(true);
-    setTimeout(function(){ setDone(false); setCart([]); setClient(""); setNote(""); }, 2000);
+    setOrderDone(true);
+    setTimeout(function(){ setOrderDone(false); clearCart(); }, 2200);
+  }
+
+  function onPaid(payInfo) {
+    var sale = {
+      id:      "VTE-" + Date.now(),
+      time:    hm(),
+      date:    new Date().toLocaleDateString("fr-CH"),
+      store:   store,
+      client:  client || "Client anonyme",
+      items:   cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price,emoji:i.emoji}; }),
+      total:   total,
+      payInfo: payInfo,
+    };
+    addSale(sale);
+    // Si client nommé → aussi une commande en production
+    if (client.trim()) {
+      addOrder({
+        id: "CMD-" + Date.now(),
+        client:client, store:store, note:note, status:"attente", priority:"normal", modReq:false,
+        items: cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price}; }),
+        time: hm(), total:total, dMethod:null, dest:null,
+      });
+    }
+    setShowPay(false);
+    setLastSale(sale);
+    setPaidAnim(true);
+    if (showClient) setPaidAnim(true);
+    setShowReceipt(true);
+    setTimeout(function(){
+      clearCart();
+      setPaidAnim(false);
+    }, 3500);
   }
 
   function handleSave(updated) {
@@ -1091,29 +1524,108 @@ function Vendeuse(props) {
     setTimeout(function(){ setSaved(false); }, 2000);
   }
 
+  // KPIs du jour
+  var today = new Date().toLocaleDateString("fr-CH");
+  var todaySales = sales.filter(function(s){ return s.date === today; });
+  var caJour     = todaySales.reduce(function(s,v){ return s+v.total; }, 0);
+  var nbTx       = todaySales.length;
+  var avgTicket  = nbTx > 0 ? caJour / nbTx : 0;
+
   return (
-    <div style={{height:"100dvh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{height:"100dvh",display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F3EE"}}>
       {edit && <EditModal order={edit} onSave={handleSave} onClose={function(){ setEdit(null); }}
                           onModReq={function(id){ updOrder(id,{modReq:true}); }} sendMsg={sendMsg} />}
-      <div style={{display:"flex",background:"#fff",borderBottom:"1px solid #EDE0D0",padding:"0 20px"}}>
-        {[["pos","🛒 Nouvelle commande"],["history","📋 Mes commandes"]].map(function(item){
+      {showPay && <PayModal total={total} cart={cart} tenant="BakeryOS" onPaid={onPaid} onClose={function(){ setShowPay(false); }} />}
+      {showReceipt && <ReceiptModal sale={lastSale} tenant="BakeryOS" onClose={function(){ setShowReceipt(false); }} />}
+      {showClient && <ClientDisplay cart={cart} total={total} tenant="BakeryOS" paid={paidAnim} onClose={function(){ setShowClient(false); }} />}
+
+      {/* ── Barre onglets ── */}
+      <div style={{display:"flex",background:"#fff",borderBottom:"1px solid #EDE0D0",padding:"0 16px",alignItems:"center",gap:0,flexShrink:0}}>
+        {[["pos","🛒 Caisse"],["sales","📊 Ventes du jour"],["history","📋 Commandes"]].map(function(item){
           return (
             <button key={item[0]} onClick={function(){ setTab(item[0]); }}
-              style={{padding:"12px 16px",border:"none",background:"none",
+              style={{padding:"13px 16px",border:"none",background:"none",
                       color:tab===item[0]?"#C8953A":"#8B7355",fontWeight:tab===item[0]?700:400,
                       fontSize:12,cursor:"pointer",fontFamily:"'Outfit',sans-serif",
-                      borderBottom:tab===item[0]?"2px solid #C8953A":"2px solid transparent",transition:"all .16s"}}>
+                      borderBottom:tab===item[0]?"2px solid #C8953A":"2px solid transparent",
+                      transition:"all .16s",whiteSpace:"nowrap"}}>
               {item[1]}
             </button>
           );
         })}
-        {saved && <div style={{marginLeft:"auto",alignSelf:"center",background:"#D1FAE5",color:"#065F46",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:18,animation:"pop .3s ease"}}>✅ Sauvegarde</div>}
+        <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={function(){ setShowClient(function(v){return !v;}); }}
+            title="Affichage client (2e écran)"
+            style={{padding:"5px 11px",borderRadius:18,border:"1px solid "+(showClient?"#C8953A":"#EDE0D0"),
+                    background:showClient?"#FDF0D8":"transparent",color:showClient?"#92400E":"#8B7355",
+                    fontSize:11,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:600,transition:"all .15s"}}>
+            🖥 Client
+          </button>
+          {saved && <div style={{background:"#D1FAE5",color:"#065F46",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:18,animation:"pop .3s ease"}}>✅ Sauvegarde</div>}
+        </div>
       </div>
 
-      {tab === "history" ? (
+      {/* ── Onglet Ventes du jour ── */}
+      {tab === "sales" && (
+        <div style={{flex:1,overflowY:"auto",padding:20}}>
+          <h2 style={{fontFamily:"'Outfit',sans-serif",fontSize:26,color:"#1E0E05",margin:"0 0 16px"}}>📊 Ventes du jour</h2>
+
+          {/* KPIs */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+            {[
+              {label:"CA du jour",    val:"CHF "+caJour.toFixed(2), bg:"linear-gradient(135deg,#C8953A,#a07228)", dot:"#FDF8F0"},
+              {label:"Transactions",  val:nbTx,                      bg:"linear-gradient(135deg,#1E40AF,#2563EB)", dot:"#BFDBFE"},
+              {label:"Ticket moyen",  val:"CHF "+avgTicket.toFixed(2),bg:"linear-gradient(135deg,#065F46,#059669)",dot:"#A7F3D0"},
+            ].map(function(k){
+              return (
+                <div key={k.label} style={{background:k.bg,borderRadius:14,padding:"16px",color:"#fff"}}>
+                  <div style={{fontSize:22,fontWeight:800,fontFamily:"'Outfit',sans-serif",marginBottom:2}}>{k.val}</div>
+                  <div style={{fontSize:10,opacity:.75,textTransform:"uppercase",letterSpacing:.9}}>{k.label}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Liste ventes */}
+          {todaySales.length === 0 ? (
+            <div style={{textAlign:"center",padding:"40px 0",color:"#8B7355"}}>
+              <div style={{fontSize:36,marginBottom:8}}>🧾</div>
+              <div style={{fontSize:13}}>Aucune vente enregistrée aujourd'hui</div>
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {todaySales.map(function(s){
+                var mIcon = s.payInfo.method==="card"?"💳":s.payInfo.method==="cash"?"💵":"🔀";
+                return (
+                  <div key={s.id} style={{background:"#fff",borderRadius:12,padding:"12px 16px",boxShadow:"0 2px 8px rgba(0,0,0,.05)",display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{width:36,height:36,borderRadius:10,background:"#FDF0D8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{mIcon}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:600,color:"#1E0E05",marginBottom:1}}>{s.client}</div>
+                      <div style={{fontSize:10,color:"#8B7355",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {s.items.map(function(i){ return i.qty+"× "+i.name; }).join(", ")}
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontFamily:"'Outfit',sans-serif",fontSize:15,fontWeight:700,color:"#C8953A"}}>CHF {s.total.toFixed(2)}</div>
+                      <div style={{fontSize:10,color:"#8B7355"}}>{s.time}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{background:"#F7F3EE",borderRadius:10,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+                <span style={{fontSize:12,color:"#5C4A32",fontWeight:600}}>Total journée</span>
+                <span style={{fontFamily:"'Outfit',sans-serif",fontSize:18,fontWeight:800,color:"#C8953A"}}>CHF {caJour.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet Historique commandes ── */}
+      {tab === "history" && (
         <div style={{flex:1,overflowY:"auto",padding:20}}>
           <h3 style={{fontFamily:"'Outfit',sans-serif",fontSize:24,color:"#1E0E05",margin:"0 0 4px"}}>Toutes les commandes</h3>
-          <p style={{color:"#8B7355",fontSize:12,margin:"0 0 14px"}}>Cliquez pour voir le detail ou modifier</p>
+          <p style={{color:"#8B7355",fontSize:12,margin:"0 0 14px"}}>Cliquez pour voir le détail ou modifier</p>
           <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
             {Object.keys(SM).map(function(s){
               var m = SM[s];
@@ -1121,7 +1633,6 @@ function Vendeuse(props) {
                 <div key={s} style={{display:"flex",alignItems:"center",gap:3,fontSize:10}}>
                   <div style={{width:6,height:6,borderRadius:"50%",background:m.dot}} />
                   <span style={{background:m.bg,color:m.tx,padding:"2px 7px",borderRadius:11,fontWeight:600,fontSize:9}}>{m.label}</span>
-                  <span style={{color:"#8B7355"}}>{m.lock ? (s==="prete"?"demande":"verrouille") : "modifiable"}</span>
                 </div>
               );
             })}
@@ -1144,110 +1655,173 @@ function Vendeuse(props) {
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontSize:15,fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {o.total.toFixed(2)}</div>
                     <div style={{fontSize:10,color:"#8B7355"}}>{o.time}</div>
-                    <div style={{fontSize:10,color:sm.lock?"#8B7355":"#065F46",fontWeight:sm.lock?400:600,marginTop:1}}>
-                      {sm.lock ? (o.status==="prete" ? "📩 Demande" : "🔒") : "✏️ Editable"}
-                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* ── Onglet POS Caisse ── */}
+      {tab === "pos" && (
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-          <div style={{flex:1,overflowY:"auto",padding:16}}>
-            <input placeholder="🔍 Rechercher…" value={search} onChange={function(e){ setSearch(e.target.value); }}
-              style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"2px solid transparent",background:"#fff",fontSize:13,outline:"none",fontFamily:"'Outfit',sans-serif",boxShadow:"0 2px 6px rgba(0,0,0,.06)",marginBottom:11,transition:"border-color .18s"}}
-              onFocus={function(e){ e.target.style.borderColor="#C8953A"; }}
-              onBlur={function(e){ e.target.style.borderColor="transparent"; }} />
-            <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-              {CATS.map(function(c){
-                return (
-                  <button key={c} onClick={function(){ setCat(c); }}
-                    style={{padding:"4px 11px",borderRadius:16,border:"none",cursor:"pointer",
-                            background:cat===c?"#1E0E05":"#fff",color:cat===c?"#FDF8F0":"#5C4A32",
-                            fontSize:11,fontWeight:500,fontFamily:"'Outfit',sans-serif",boxShadow:"0 1px 4px rgba(0,0,0,.07)",transition:"all .12s"}}>{c}</button>
-                );
-              })}
+
+          {/* Grille produits */}
+          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+            {/* Barre recherche + catégories */}
+            <div style={{padding:"10px 12px 0",background:"#fff",borderBottom:"1px solid #EDE0D0",flexShrink:0}}>
+              <input placeholder="🔍 Rechercher un produit…" value={search} onChange={function(e){ setSearch(e.target.value); }}
+                style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #EDE0D0",background:"#F7F3EE",
+                        fontSize:13,outline:"none",fontFamily:"'Outfit',sans-serif",marginBottom:8,
+                        transition:"border-color .18s"}}
+                onFocus={function(e){ e.target.style.borderColor="#C8953A"; }}
+                onBlur={function(e){ e.target.style.borderColor="#EDE0D0"; }} />
+              <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:10}}>
+                {CATS_ACTIVE.map(function(c){
+                  return (
+                    <button key={c} onClick={function(){ setCat(c); }}
+                      style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",flexShrink:0,
+                              background:cat===c?"#1E0E05":"#F7F3EE",color:cat===c?"#FDF8F0":"#5C4A32",
+                              fontSize:12,fontWeight:cat===c?700:500,fontFamily:"'Outfit',sans-serif",transition:"all .14s"}}>
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(115px,1fr))",gap:8}}>
-              {filtered.map(function(p){
-                return (
-                  <div key={p.id} className="pt" onClick={function(){ addToCart(p); }}
-                    style={{background:"#fff",borderRadius:11,padding:"12px 8px",cursor:"pointer",border:"2px solid transparent",textAlign:"center",boxShadow:"0 2px 6px rgba(0,0,0,.05)"}}>
-                    <div style={{fontSize:26,marginBottom:4}}>{p.emoji}</div>
-                    <div style={{fontSize:10,fontWeight:600,color:"#1E0E05",marginBottom:2,lineHeight:1.3}}>{p.name}</div>
-                    <div style={{fontSize:12,fontWeight:700,color:"#C8953A"}}>CHF {p.price.toFixed(2)}</div>
-                  </div>
-                );
-              })}
+
+            {/* Grille tactile */}
+            <div style={{flex:1,overflowY:"auto",padding:12}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
+                {filtered.map(function(p){
+                  var inCart = cart.find(function(i){ return i.id===p.id; });
+                  return (
+                    <div key={p.id} className="pt" onClick={function(){ addToCart(p); }}
+                      style={{background:"#fff",borderRadius:14,padding:"14px 10px",cursor:"pointer",textAlign:"center",
+                              boxShadow:"0 2px 8px rgba(0,0,0,.06)",
+                              border:"2px solid "+(inCart?"#C8953A":"transparent"),
+                              position:"relative",transition:"all .15s"}}>
+                      {inCart && (
+                        <div style={{position:"absolute",top:8,right:8,background:"#C8953A",color:"#1E0E05",
+                                     borderRadius:"50%",width:20,height:20,fontSize:10,fontWeight:800,
+                                     display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {inCart.qty}
+                        </div>
+                      )}
+                      <div style={{fontSize:32,marginBottom:6}}>{p.emoji}</div>
+                      <div style={{fontSize:11,fontWeight:600,color:"#1E0E05",marginBottom:4,lineHeight:1.3}}>{p.name}</div>
+                      <div style={{fontSize:14,fontWeight:800,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {p.price.toFixed(2)}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-          <div style={{width:275,background:"#1E0E05",display:"flex",flexDirection:"column",padding:16,overflowY:"auto"}}>
-            <h3 style={{fontFamily:"'Outfit',sans-serif",fontSize:19,color:"#FDF8F0",margin:"0 0 12px"}}>🛒 Panier</h3>
-            <div style={{marginBottom:9}}>
-              <label style={{fontSize:9,color:"rgba(253,248,240,.4)",letterSpacing:1.5,textTransform:"uppercase",display:"block",marginBottom:3}}>Client *</label>
-              <input value={client} onChange={function(e){ setClient(e.target.value); setCartErr(""); }} placeholder="Nom du client"
-                style={{width:"100%",padding:"7px 9px",borderRadius:7,
-                        border:"1px solid "+(cartErr && !client.trim() ? "#EF4444" : "rgba(200,149,58,.3)"),
-                        background:"rgba(255,255,255,.06)",color:"#FDF8F0",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif",
-                        animation: cartErr && !client.trim() ? "shake .45s ease" : "none"}} />
+
+          {/* Panier */}
+          <div style={{width:290,background:"#1E0E05",display:"flex",flexDirection:"column",flexShrink:0}}>
+
+            {/* Header panier */}
+            <div style={{padding:"14px 16px 10px",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                <h3 style={{fontFamily:"'Outfit',sans-serif",fontSize:17,color:"#FDF8F0",margin:0}}>🛒 Panier</h3>
+                {cart.length > 0 && (
+                  <button onClick={clearCart}
+                    style={{background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,
+                            color:"#FCA5A5",fontSize:10,fontWeight:600,padding:"3px 8px",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    Vider
+                  </button>
+                )}
+              </div>
+              {/* Client (optionnel en POS) */}
+              <input value={client} onChange={function(e){ setClient(e.target.value); }}
+                placeholder="👤 Client (optionnel)"
+                style={{width:"100%",padding:"7px 10px",borderRadius:8,border:"1px solid rgba(200,149,58,.25)",
+                        background:"rgba(255,255,255,.05)",color:"#FDF8F0",fontSize:12,outline:"none",
+                        fontFamily:"'Outfit',sans-serif"}} />
             </div>
-            <div style={{marginBottom:11}}>
-              <label style={{fontSize:9,color:"rgba(253,248,240,.4)",letterSpacing:1.5,textTransform:"uppercase",display:"block",marginBottom:3}}>Magasin</label>
-              <select value={store} onChange={function(e){ setStore(e.target.value); }}
-                style={{width:"100%",padding:"7px 9px",borderRadius:7,border:"1px solid rgba(200,149,58,.3)",background:"rgba(255,255,255,.06)",color:"#FDF8F0",fontSize:11,outline:"none",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                {STORES.map(function(s){ return <option key={s} style={{background:"#2d1508"}}>{s}</option>; })}
-              </select>
-            </div>
-            <div style={{flex:1,overflowY:"auto",marginBottom:9,minHeight:40}}>
-              {cart.length===0 ? (
-                <div style={{textAlign:"center",color:"rgba(253,248,240,.18)",padding:"20px 0",fontSize:12}}>
-                  <div style={{fontSize:22,marginBottom:4}}>🧺</div>Aucun article
+
+            {/* Articles */}
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+              {cart.length === 0 ? (
+                <div style={{textAlign:"center",color:"rgba(253,248,240,.2)",padding:"30px 0",fontSize:12}}>
+                  <div style={{fontSize:28,marginBottom:6}}>🧺</div>
+                  Touchez un produit pour l'ajouter
                 </div>
               ) : cart.map(function(item){
                 return (
-                  <div key={item.id} style={{background:"rgba(255,255,255,.06)",borderRadius:7,padding:"7px 9px",marginBottom:5,display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:13}}>{item.emoji}</span>
+                  <div key={item.id} style={{background:"rgba(255,255,255,.06)",borderRadius:9,padding:"8px 10px",marginBottom:6,
+                                             display:"flex",alignItems:"center",gap:8,animation:"slideIn .18s ease"}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{item.emoji}</span>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:10,color:"#FDF8F0",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</div>
-                      <div style={{fontSize:10,color:"#C8953A"}}>CHF {(item.price*item.qty).toFixed(2)}</div>
+                      <div style={{fontSize:11,color:"#FDF8F0",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</div>
+                      <div style={{fontSize:11,color:"#C8953A",fontWeight:700}}>CHF {(item.price*item.qty).toFixed(2)}</div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:3}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
                       <button onClick={function(){ setQty(item.id,item.qty-1); }}
-                        style={{width:19,height:19,borderRadius:"50%",border:"1px solid rgba(255,255,255,.2)",background:"transparent",color:"#FDF8F0",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-                      <span style={{color:"#FDF8F0",fontSize:12,fontWeight:600,minWidth:15,textAlign:"center"}}>{item.qty}</span>
+                        style={{width:22,height:22,borderRadius:"50%",border:"1px solid rgba(255,255,255,.2)",background:"transparent",
+                                color:"#FDF8F0",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                      <span style={{color:"#FDF8F0",fontSize:13,fontWeight:700,minWidth:16,textAlign:"center"}}>{item.qty}</span>
                       <button onClick={function(){ setQty(item.id,item.qty+1); }}
-                        style={{width:19,height:19,borderRadius:"50%",border:"1px solid rgba(200,149,58,.4)",background:"rgba(200,149,58,.15)",color:"#C8953A",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                        style={{width:22,height:22,borderRadius:"50%",border:"1px solid rgba(200,149,58,.4)",background:"rgba(200,149,58,.15)",
+                                color:"#C8953A",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                      <button onClick={function(){ removeItem(item.id); }}
+                        style={{width:18,height:18,borderRadius:"50%",border:"none",background:"rgba(239,68,68,.18)",
+                                color:"#FCA5A5",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:2}}>✕</button>
                     </div>
                   </div>
                 );
               })}
             </div>
-            <input value={note} onChange={function(e){ setNote(e.target.value); }} placeholder="📝 Note…"
-              style={{width:"100%",padding:"6px 9px",borderRadius:7,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)",color:"rgba(253,248,240,.6)",fontSize:11,outline:"none",fontFamily:"'Outfit',sans-serif",marginBottom:10}} />
-            <div style={{borderTop:"1px solid rgba(255,255,255,.1)",paddingTop:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                <span style={{color:"rgba(253,248,240,.42)",fontSize:12}}>Total</span>
-                <span style={{color:"#C8953A",fontSize:18,fontWeight:700,fontFamily:"'Outfit',sans-serif"}}>CHF {total.toFixed(2)}</span>
+
+            {/* Note */}
+            <div style={{padding:"0 12px 8px"}}>
+              <input value={note} onChange={function(e){ setNote(e.target.value); }} placeholder="📝 Note…"
+                style={{width:"100%",padding:"6px 9px",borderRadius:7,border:"1px solid rgba(255,255,255,.08)",
+                        background:"rgba(255,255,255,.04)",color:"rgba(253,248,240,.6)",fontSize:11,
+                        outline:"none",fontFamily:"'Outfit',sans-serif"}} />
+            </div>
+
+            {/* Total + paiement */}
+            <div style={{padding:"12px 16px 16px",borderTop:"1px solid rgba(255,255,255,.1)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:12}}>
+                <span style={{color:"rgba(253,248,240,.5)",fontSize:12}}>Total</span>
+                <span style={{fontFamily:"'Outfit',sans-serif",color:"#C8953A",fontSize:28,fontWeight:800,letterSpacing:-1}}>
+                  CHF {total.toFixed(2)}
+                </span>
               </div>
-              {done ? (
-                <div style={{background:"linear-gradient(135deg,#065F46,#047857)",borderRadius:9,padding:11,textAlign:"center",color:"#D1FAE5",fontSize:13,fontWeight:600,animation:"pop .3s ease"}}>✅ Envoyee en production !</div>
+              {cartErr && (
+                <div style={{background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,
+                             padding:"7px 10px",marginBottom:8,fontSize:11,color:"#FCA5A5",
+                             textAlign:"center",animation:"shake .45s ease"}}>
+                  {cartErr}
+                </div>
+              )}
+              {orderDone ? (
+                <div style={{background:"linear-gradient(135deg,#065F46,#047857)",borderRadius:12,padding:"13px",
+                             textAlign:"center",color:"#D1FAE5",fontSize:13,fontWeight:700,animation:"pop .3s ease",marginBottom:8}}>
+                  ✅ Commande envoyée en production !
+                </div>
               ) : (
                 <>
-                  {cartErr && (
-                    <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:7,padding:"7px 10px",
-                                 marginBottom:8,fontSize:11,color:"#DC2626",fontWeight:500,
-                                 animation:"shake .45s ease",textAlign:"center"}}>
-                      {cartErr}
-                    </div>
-                  )}
-                  <button className="bg" onClick={placeOrder}
-                    style={{width:"100%",padding:"11px",borderRadius:9,border:"none",
-                            background:"linear-gradient(135deg,#C8953A,#a07228)",
-                            color:"#1E0E05",
-                            fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
-                    Envoyer en production
+                  <button className="bg" onClick={handlePay}
+                    style={{width:"100%",padding:"14px",borderRadius:12,border:"none",
+                            background:cart.length?"linear-gradient(135deg,#C8953A,#a07228)":"rgba(255,255,255,.08)",
+                            color:cart.length?"#1E0E05":"rgba(255,255,255,.2)",
+                            fontSize:15,fontWeight:800,cursor:cart.length?"pointer":"not-allowed",
+                            fontFamily:"'Outfit',sans-serif",letterSpacing:.3,transition:"all .15s",marginBottom:8}}>
+                    💳 Encaisser
+                  </button>
+                  <button onClick={handleOrder}
+                    style={{width:"100%",padding:"11px",borderRadius:12,
+                            border:"1px solid rgba(200,149,58,.35)",
+                            background:"rgba(200,149,58,.08)",
+                            color:"#C8953A",
+                            fontSize:13,fontWeight:700,cursor:"pointer",
+                            fontFamily:"'Outfit',sans-serif",transition:"all .15s"}}>
+                    📋 Commander
                   </button>
                 </>
               )}
@@ -1794,8 +2368,10 @@ function Admin(props) {
     setUsers(function(prev){ return prev.filter(function(u){ return u.id!==id; }); });
   }
 
-  // Catalogue state
-  const [catalogue, setCatalogue] = useState(PRODUCTS.map(function(p){ return Object.assign({},p,{active:true}); }));
+  // Catalogue — partagé depuis App via props
+  var catalogue    = props.catalogue    || PRODUCTS.map(function(p){ return Object.assign({},p,{active:true}); });
+  var setCatalogue = props.setCatalogue || function(){};
+  var sales        = props.sales        || [];
   const [editProd,  setEditProd]  = useState(null);
   const [showNew,   setShowNew]   = useState(false);
   const [newP, setNewP] = useState({name:"",price:"",category:"Viennoiseries",emoji:"🍞",stock:""});
