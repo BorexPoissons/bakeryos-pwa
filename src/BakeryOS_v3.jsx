@@ -477,7 +477,6 @@ function Layout(props) {
     if (sideChat && sideChatEndRef.current)
       sideChatEndRef.current.scrollIntoView({behavior:"smooth"});
   }, [chat, sideChat]);
-  }, []);
 
   var prodN = orders.filter(function(o){ return o.status==="production"; }).length;
   var livN  = orders.filter(function(o){ return o.status==="livraison"; }).length;
