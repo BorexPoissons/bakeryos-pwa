@@ -4103,7 +4103,6 @@ function Admin(props) {
                 </div>
               );
             })()}
-          </div>
 
           {/* ── Plan de salle par magasin ── */}
           <div style={{marginTop:20}}>
@@ -4124,6 +4123,7 @@ function Admin(props) {
                 </div>
               );
             })}
+          </div>
           </div>
         )}
 
