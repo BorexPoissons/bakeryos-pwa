@@ -58,6 +58,7 @@ const PERMS_DEF = {
     { id:"catalogue",     label:"📦 Catalogue",         group:"adminTabs" },
     { id:"gestion",       label:"⚙️ Gestion magasins",  group:"adminTabs" },
     { id:"utilisateurs",  label:"👥 Utilisateurs",      group:"adminTabs" },
+    { id:"supervision",   label:"📈 Supervision",        group:"adminTabs" },
   ],
   // Fonctionnalités
   features: [
@@ -74,7 +75,7 @@ const PERMS_DEF = {
 // Permissions par défaut selon le rôle
 function defaultPerms(role) {
   switch(role) {
-    case "admin":      return { screens:["vendeuse","production","livreur","gerant","admin"], adminTabs:["dashboard","commandes","catalogue","gestion","utilisateurs"], features:["create_order","edit_catalogue","view_cost","chat","edit_logo","manage_staff","export_data"] };
+    case "admin":      return { screens:["vendeuse","production","livreur","gerant","admin"], adminTabs:["dashboard","commandes","catalogue","gestion","utilisateurs","supervision"], features:["create_order","edit_catalogue","view_cost","chat","edit_logo","manage_staff","export_data"] };
     case "gerant":     return { screens:["gerant"], adminTabs:["dashboard","commandes","catalogue","gestion"], features:["create_order","chat","manage_staff"] };
     case "vendeuse":   return { screens:["vendeuse"], adminTabs:[], features:["chat"] };
     case "production": return { screens:["production"], adminTabs:[], features:["chat"] };
@@ -3698,6 +3699,8 @@ function Admin(props) {
   var tableLayouts    = props.tableLayouts    || {};
   var setTableLayouts = props.setTableLayouts || function(){};
   var permissions = props.permissions  || defaultPerms(userStore ? "gerant" : "admin");
+  var catalogue   = props.catalogue   || [];
+  var sales       = props.sales       || [];
   var isGerant    = !!userStore;
   var allowedTabs = permissions.adminTabs || [];
   var canCreateOrder  = permissions.features && permissions.features.indexOf("create_order") !== -1;
@@ -3962,7 +3965,7 @@ function Admin(props) {
             <div style={{color:"#8B7355",fontSize:11}}>{new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
-            {[["dashboard","📊 Vue générale"],["commandes","📋 Commandes"],["catalogue","📦 Catalogue"],["gestion","⚙️ Gestion"],["utilisateurs","👥 Utilisateurs"]]
+            {[["dashboard","📊 Vue générale"],["commandes","📋 Commandes"],["catalogue","📦 Catalogue"],["gestion","⚙️ Gestion"],["utilisateurs","👥 Utilisateurs"],["supervision","📈 Supervision"]]
             .filter(function(item){ return allowedTabs.indexOf(item[0]) !== -1; })
             .map(function(item){
               return (
@@ -5317,6 +5320,334 @@ function Admin(props) {
 
           </div>
         )}
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* ── ONGLET SUPERVISION (admin only) ───────────────────── */}
+        {/* ══════════════════════════════════════════════════════════ */}
+        {adminTab==="supervision" && (function(){
+          // ── Filtrage des ventes ──
+          var today = new Date().toLocaleDateString("fr-CH");
+          var allSales = sales || [];
+          var filteredSales = storeFilter==="all" ? allSales : allSales.filter(function(s){ return s.store===storeFilter; });
+
+          // ── Dates helper ──
+          function parseDate(d) { var p=d.split("."); return new Date(p[2],p[1]-1,p[0]); }
+          var now = new Date();
+          var startOfWeek = new Date(now); startOfWeek.setDate(now.getDate()-now.getDay()+1); startOfWeek.setHours(0,0,0,0);
+          var startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+          var salesToday = filteredSales.filter(function(s){ return s.date===today; });
+          var salesWeek  = filteredSales.filter(function(s){ return parseDate(s.date)>=startOfWeek; });
+          var salesMonth = filteredSales.filter(function(s){ return parseDate(s.date)>=startOfMonth; });
+
+          var caToday = salesToday.reduce(function(a,s){ return a+s.total; },0);
+          var caWeek  = salesWeek.reduce(function(a,s){ return a+s.total; },0);
+          var caMonth = salesMonth.reduce(function(a,s){ return a+s.total; },0);
+          var txToday = salesToday.length;
+          var avgToday = txToday>0 ? caToday/txToday : 0;
+
+          // ── Par méthode de paiement ──
+          var byCash=0, byCard=0, bySplit=0;
+          salesToday.forEach(function(s){
+            if(s.payInfo.method==="cash") byCash+=s.total;
+            else if(s.payInfo.method==="split"){ bySplit+=s.total; }
+            else byCard+=s.total;
+          });
+
+          // ── Par magasin ──
+          var byStore = {};
+          STORES.forEach(function(st){ byStore[st]={ca:0,tx:0,items:0}; });
+          salesToday.forEach(function(s){
+            if(byStore[s.store]){
+              byStore[s.store].ca+=s.total;
+              byStore[s.store].tx++;
+              byStore[s.store].items+=s.items.reduce(function(a,i){return a+i.qty;},0);
+            }
+          });
+
+          // ── Par vendeur (basé sur client prefix "Table" ou nom) ──
+          var byClient = {};
+          salesToday.forEach(function(s){
+            var key = s.client || "Anonyme";
+            if(!byClient[key]) byClient[key]={ca:0,tx:0};
+            byClient[key].ca+=s.total;
+            byClient[key].tx++;
+          });
+          var clientRanking = Object.keys(byClient).map(function(k){ return {name:k,ca:byClient[k].ca,tx:byClient[k].tx}; })
+            .sort(function(a,b){ return b.ca-a.ca; });
+
+          // ── Top produits ──
+          var prodMap = {};
+          salesToday.forEach(function(s){
+            s.items.forEach(function(i){
+              if(!prodMap[i.name]) prodMap[i.name]={name:i.name,qty:0,ca:0,emoji:i.emoji||"📦"};
+              prodMap[i.name].qty+=i.qty;
+              prodMap[i.name].ca+=i.price*i.qty;
+            });
+          });
+          var topProducts = Object.values(prodMap).sort(function(a,b){ return b.ca-a.ca; });
+
+          // ── Anomalies / erreurs ──
+          var anomalies = [];
+          salesToday.forEach(function(s){
+            if(s.total===0) anomalies.push({type:"zero",label:"Montant zéro",sale:s});
+            if(s.total>500) anomalies.push({type:"high",label:"Montant élevé (>500 CHF)",sale:s});
+            if(s.payInfo.method==="cash" && s.payInfo.change>50) anomalies.push({type:"change",label:"Rendu monnaie > 50 CHF",sale:s});
+            if(!s.client || s.client==="Client anonyme") anomalies.push({type:"anon",label:"Client non identifié",sale:s});
+          });
+
+          // ── Heures de pointe ──
+          var byHour = {};
+          salesToday.forEach(function(s){
+            var h = s.time ? s.time.split(":")[0] : "??";
+            if(!byHour[h]) byHour[h]={h:h,ca:0,tx:0};
+            byHour[h].ca+=s.total;
+            byHour[h].tx++;
+          });
+          var hourData = Object.values(byHour).sort(function(a,b){ return a.h.localeCompare(b.h); });
+          var maxHourCA = hourData.reduce(function(m,h){ return Math.max(m,h.ca); },1);
+
+          return (
+            <div>
+              {/* ── KPIs globaux ── */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:20}}>
+                {[
+                  {label:"CA Aujourd'hui",val:"CHF "+caToday.toFixed(2),bg:"linear-gradient(135deg,#C8953A,#a07228)",c:"#fff"},
+                  {label:"Transactions",  val:txToday,                     bg:"linear-gradient(135deg,#1E40AF,#2563EB)",c:"#fff"},
+                  {label:"Ticket moyen",  val:"CHF "+avgToday.toFixed(2), bg:"linear-gradient(135deg,#065F46,#059669)",c:"#fff"},
+                  {label:"CA Semaine",    val:"CHF "+caWeek.toFixed(2),   bg:"#fff",c:"#1E0E05",border:true},
+                  {label:"CA Mois",       val:"CHF "+caMonth.toFixed(2),  bg:"#fff",c:"#1E0E05",border:true},
+                  {label:"Total ventes",  val:filteredSales.length+" tickets",bg:"#fff",c:"#1E0E05",border:true},
+                ].map(function(k){
+                  return (
+                    <div key={k.label} style={{background:k.bg,borderRadius:14,padding:"14px 16px",
+                                               border:k.border?"1.5px solid #EDE0D0":"none"}}>
+                      <div style={{fontSize:20,fontWeight:800,fontFamily:"'Outfit',sans-serif",color:k.c,marginBottom:2}}>{k.val}</div>
+                      <div style={{fontSize:9,color:k.c,opacity:.7,textTransform:"uppercase",letterSpacing:.8}}>{k.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+
+                {/* ── CA par magasin ── */}
+                <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>🏪 CA par magasin (jour)</h4>
+                  {STORES.map(function(st){
+                    var d = byStore[st];
+                    var pct = caToday>0 ? (d.ca/caToday*100) : 0;
+                    return (
+                      <div key={st} style={{marginBottom:10}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                          <span style={{color:"#5C4A32",fontWeight:600}}>{st.split(" ").slice(0,3).join(" ")}</span>
+                          <span style={{color:"#C8953A",fontWeight:700}}>CHF {d.ca.toFixed(2)} · {d.tx} tx</span>
+                        </div>
+                        <div style={{height:8,background:"#F7F3EE",borderRadius:4,overflow:"hidden"}}>
+                          <div style={{width:pct+"%",height:"100%",background:"linear-gradient(90deg,#C8953A,#a07228)",borderRadius:4,
+                                       transition:"width .4s ease"}} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ── Par méthode de paiement ── */}
+                <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>💳 Paiements (jour)</h4>
+                  {[
+                    {label:"Carte",  val:byCard,  icon:"💳",c:"#3B82F6",bg:"#DBEAFE"},
+                    {label:"Espèces",val:byCash,   icon:"💵",c:"#059669",bg:"#D1FAE5"},
+                    {label:"Mixte",  val:bySplit,  icon:"🔀",c:"#8B5CF6",bg:"#F3E8FF"},
+                  ].map(function(m){
+                    var pct = caToday>0 ? (m.val/caToday*100) : 0;
+                    return (
+                      <div key={m.label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                        <div style={{width:32,height:32,borderRadius:8,background:m.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                          {m.icon}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
+                            <span style={{color:"#5C4A32",fontWeight:600}}>{m.label}</span>
+                            <span style={{color:m.c,fontWeight:700}}>CHF {m.val.toFixed(2)} ({pct.toFixed(0)}%)</span>
+                          </div>
+                          <div style={{height:6,background:"#F7F3EE",borderRadius:3,overflow:"hidden"}}>
+                            <div style={{width:pct+"%",height:"100%",background:m.c,borderRadius:3,transition:"width .4s ease"}} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+
+                {/* ── Heures de pointe ── */}
+                <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>⏰ Activité par heure</h4>
+                  {hourData.length===0 ? (
+                    <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune vente aujourd'hui</div>
+                  ) : (
+                    <div style={{display:"flex",alignItems:"flex-end",gap:4,height:100}}>
+                      {hourData.map(function(h){
+                        var pct = h.ca/maxHourCA*100;
+                        return (
+                          <div key={h.h} style={{flex:1,textAlign:"center"}}>
+                            <div style={{background:"linear-gradient(180deg,#C8953A,#a07228)",borderRadius:"4px 4px 0 0",
+                                         height:Math.max(4,pct)+"%",transition:"height .3s ease",minHeight:4}} />
+                            <div style={{fontSize:8,color:"#8B7355",marginTop:3,fontWeight:600}}>{h.h}h</div>
+                            <div style={{fontSize:7,color:"#C8953A",fontWeight:700}}>{h.tx}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Top produits ── */}
+                <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>🏆 Top produits (jour)</h4>
+                  {topProducts.length===0 ? (
+                    <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune vente</div>
+                  ) : topProducts.slice(0,8).map(function(p,idx){
+                    return (
+                      <div key={p.name} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,
+                                                 padding:"5px 8px",borderRadius:8,background:idx<3?"#FDF0D8":"transparent"}}>
+                        <span style={{fontSize:9,color:"#8B7355",fontWeight:700,minWidth:16}}>{idx+1}.</span>
+                        <span style={{fontSize:14}}>{p.emoji}</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:11,fontWeight:600,color:"#1E0E05",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>{p.qty}×</div>
+                          <div style={{fontSize:9,color:"#8B7355"}}>CHF {p.ca.toFixed(2)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Anomalies / Alertes ── */}
+              <div style={{background:anomalies.length>0?"#FEF3C7":"#D1FAE5",borderRadius:16,padding:18,
+                           border:"1.5px solid "+(anomalies.length>0?"#F59E0B":"#10B981"),marginBottom:20}}>
+                <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:anomalies.length>0?"#92400E":"#065F46",margin:"0 0 10px"}}>
+                  {anomalies.length>0 ? "⚠️ Anomalies détectées ("+anomalies.length+")" : "✅ Aucune anomalie détectée"}
+                </h4>
+                {anomalies.length>0 && (
+                  <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto"}}>
+                    {anomalies.map(function(a,idx){
+                      var colors = {zero:{bg:"#FEE2E2",c:"#991B1B"},high:{bg:"#FEF3C7",c:"#92400E"},change:{bg:"#F3E8FF",c:"#7C3AED"},anon:{bg:"#F7F3EE",c:"#5C4A32"}};
+                      var st = colors[a.type] || colors.anon;
+                      return (
+                        <div key={idx} style={{display:"flex",alignItems:"center",gap:10,background:st.bg,borderRadius:8,padding:"7px 10px"}}>
+                          <span style={{fontSize:11,fontWeight:700,color:st.c}}>{a.label}</span>
+                          <span style={{fontSize:10,color:st.c,opacity:.7}}>— {a.sale.id} · {a.sale.client} · {a.sale.time} · CHF {a.sale.total.toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Clients / Tickets ranking ── */}
+              <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0",marginBottom:20}}>
+                <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>👤 Clients / Tickets du jour</h4>
+                {clientRanking.length===0 ? (
+                  <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune vente</div>
+                ) : clientRanking.slice(0,15).map(function(c,idx){
+                  return (
+                    <div key={idx} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",
+                                           borderBottom:idx<clientRanking.length-1?"1px solid #F7F3EE":"none"}}>
+                      <div style={{width:28,height:28,borderRadius:"50%",background:"#F7F3EE",display:"flex",alignItems:"center",
+                                   justifyContent:"center",fontSize:11,fontWeight:700,color:"#5C4A32",flexShrink:0}}>{idx+1}</div>
+                      <div style={{flex:1,fontSize:12,fontWeight:600,color:"#1E0E05"}}>{c.name}</div>
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {c.ca.toFixed(2)}</div>
+                        <div style={{fontSize:9,color:"#8B7355"}}>{c.tx} ticket{c.tx>1?"s":""}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* ── Historique complet des tickets ── */}
+              <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:0}}>
+                    🧾 Tous les tickets ({filteredSales.length})
+                  </h4>
+                  {canExportData && filteredSales.length>0 && (
+                    <button onClick={function(){
+                      var csv = "ID;Date;Heure;Magasin;Client;Articles;Total;Paiement;Rendu\n";
+                      filteredSales.forEach(function(s){
+                        csv += [s.id,s.date,s.time,s.store,s.client,
+                          s.items.map(function(i){return i.qty+"x "+i.name;}).join(" + "),
+                          s.total.toFixed(2),s.payInfo.method,
+                          (s.payInfo.change||0).toFixed(2)].join(";")+"\n";
+                      });
+                      var blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+                      var url = URL.createObjectURL(blob);
+                      var a = document.createElement("a");
+                      a.href=url; a.download="bakery_ventes_"+today.replace(/\./g,"-")+".csv";
+                      a.click(); URL.revokeObjectURL(url);
+                    }}
+                      style={{padding:"6px 14px",borderRadius:8,border:"1px solid #EDE0D0",
+                              background:"#F7F3EE",color:"#5C4A32",fontSize:11,fontWeight:700,
+                              cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:5}}>
+                      📤 Export CSV
+                    </button>
+                  )}
+                </div>
+                <div style={{maxHeight:400,overflowY:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead>
+                      <tr style={{background:"#F7F3EE",position:"sticky",top:0}}>
+                        {["ID","Heure","Magasin","Client","Articles","Total","Paiement"].map(function(h){
+                          return <th key={h} style={{padding:"8px 6px",textAlign:"left",color:"#5C4A32",fontWeight:700,fontSize:10,
+                                                     borderBottom:"1.5px solid #EDE0D0",whiteSpace:"nowrap"}}>{h}</th>;
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSales.length===0 ? (
+                        <tr><td colSpan={7} style={{padding:"24px",textAlign:"center",color:"#8B7355"}}>Aucune vente enregistrée</td></tr>
+                      ) : filteredSales.map(function(s){
+                        var mIcon = s.payInfo.method==="card"?"💳":s.payInfo.method==="cash"?"💵":"🔀";
+                        var isAnomaly = s.total===0 || s.total>500;
+                        return (
+                          <tr key={s.id} className="tr" style={{borderBottom:"1px solid #F7F3EE",
+                                                                background:isAnomaly?"#FEF3C7":"transparent"}}>
+                            <td style={{padding:"7px 6px",fontWeight:600,color:"#1E0E05",whiteSpace:"nowrap"}}>{s.id}</td>
+                            <td style={{padding:"7px 6px",color:"#5C4A32"}}>{s.date} {s.time}</td>
+                            <td style={{padding:"7px 6px",color:"#5C4A32",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {s.store ? s.store.split(" ").slice(0,3).join(" ") : "—"}
+                            </td>
+                            <td style={{padding:"7px 6px",color:"#1E0E05",fontWeight:500}}>{s.client}</td>
+                            <td style={{padding:"7px 6px",color:"#8B7355",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {s.items.map(function(i){ return i.qty+"× "+i.name; }).join(", ")}
+                            </td>
+                            <td style={{padding:"7px 6px",fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap"}}>
+                              CHF {s.total.toFixed(2)}
+                            </td>
+                            <td style={{padding:"7px 6px"}}>
+                              <span style={{display:"inline-flex",alignItems:"center",gap:3}}>
+                                {mIcon}
+                                <span style={{fontSize:9,color:"#5C4A32"}}>{s.payInfo.method}</span>
+                                {s.payInfo.change>0 && <span style={{fontSize:8,color:"#8B7355"}}>(rendu {s.payInfo.change.toFixed(2)})</span>}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          );
+        })()} 
 
       </div>
     </div>
