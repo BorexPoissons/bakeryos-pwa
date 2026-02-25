@@ -302,6 +302,25 @@ export default function App() {
   // Session restaurée après mise à jour
   const [restoredSession, setRestoredSession] = useState(null);
   const [showRestored,    setShowRestored]    = useState(false);
+  // PWA install prompt
+  const [installPrompt,   setInstallPrompt]   = useState(null);
+  const [isInstalled,     setIsInstalled]     = useState(false);
+
+  // ── Capturer beforeinstallprompt ──
+  useEffect(function(){
+    // Vérifier si déjà installé (standalone ou iOS)
+    if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) {
+      setIsInstalled(true);
+      return;
+    }
+    function onPrompt(e) {
+      e.preventDefault();
+      setInstallPrompt(e);
+    }
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", function(){ setIsInstalled(true); setInstallPrompt(null); });
+    return function(){ window.removeEventListener("beforeinstallprompt", onPrompt); };
+  }, []);
 
   // ── Restaurer session sauvegardée au démarrage ──
   useEffect(function(){
@@ -386,6 +405,8 @@ export default function App() {
           logoUrl={logoUrl}
           users={users}
           onLogin={function(user){ setCurrentUser(user); }}
+          installPrompt={installPrompt}
+          isInstalled={isInstalled}
         />
         {showRestored && (
           <div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",zIndex:9999,
@@ -522,9 +543,11 @@ function PinModal(props) {
 
 /* ─── LOGIN ───────────────────────────────────────────────────── */
 function LoginScreen(props) {
-  var logoUrl  = props.logoUrl;
-  var users    = props.users;
-  var onLogin  = props.onLogin;
+  var logoUrl        = props.logoUrl;
+  var users          = props.users;
+  var onLogin        = props.onLogin;
+  var installPrompt  = props.installPrompt  || null;
+  var isInstalled    = props.isInstalled     || false;
 
   const [login,   setLogin]   = useState("");
   const [pass,    setPass]    = useState("");
@@ -532,8 +555,18 @@ function LoginScreen(props) {
   const [vis,     setVis]     = useState(false);
   const [showPw,  setShowPw]  = useState(false);
   const [loading, setLoading] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   useEffect(function(){ var t = setTimeout(function(){ setVis(true); }, 60); return function(){ clearTimeout(t); }; }, []);
+
+  function handleInstall() {
+    if (!installPrompt) return;
+    setInstalling(true);
+    installPrompt.prompt();
+    installPrompt.userChoice.then(function(result){
+      setInstalling(false);
+    });
+  }
 
   function handleSubmit(e) {
     if (e && e.preventDefault) e.preventDefault();
@@ -663,8 +696,43 @@ function LoginScreen(props) {
           </button>
         </div>
 
-        <p style={{color:"rgba(253,248,240,.18)",fontSize:10,marginTop:16,textAlign:"center"}}>
-          Accès restreint · Géré par l'administrateur
+        {/* Bouton installer PWA */}
+        {installPrompt && !isInstalled && (
+          <button onClick={handleInstall} disabled={installing}
+            style={{
+              marginTop:16, padding:"10px 22px", borderRadius:12,
+              border:"1px solid rgba(200,149,58,.25)",
+              background:"rgba(200,149,58,.08)", backdropFilter:"blur(8px)",
+              color:"#C8953A", fontSize:12, fontWeight:700,
+              cursor:installing?"not-allowed":"pointer",
+              fontFamily:"'Outfit',sans-serif", transition:"all .18s",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              width:"100%", maxWidth:400,
+            }}
+            onMouseOver={function(e){ e.currentTarget.style.background="rgba(200,149,58,.15)"; }}
+            onMouseOut={function(e){ e.currentTarget.style.background="rgba(200,149,58,.08)"; }}>
+            {installing ? (
+              <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Installation…</>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Installer l'application
+              </>
+            )}
+          </button>
+        )}
+        {isInstalled && (
+          <div style={{marginTop:14,fontSize:10,color:"rgba(16,185,129,.6)",display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
+            <span>✓</span> Application installée
+          </div>
+        )}
+
+        <p style={{color:"rgba(253,248,240,.18)",fontSize:10,marginTop:isInstalled?8:16,textAlign:"center"}}>
+          Accès restreint · Géré par l'administrateur · v{APP_VERSION}
         </p>
       </div>
     </div>
