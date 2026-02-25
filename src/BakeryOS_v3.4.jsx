@@ -1657,12 +1657,14 @@ function TableCart(props) {
   var session       = props.session || {cart:[], openedAt: null, status:"libre"};
   var catalogue     = props.catalogue || [];
   var onUpdate      = props.onUpdate;   // (patch) -> updates session
-  var onClose       = props.onClose;
-  var onPay         = props.onPay;
+  var onClose       = props.onClose;    // ferme le modal (met en attente)
+  var onPayDirect   = props.onPayDirect;// (table, session) -> paiement direct
+  var onClearTable  = props.onClearTable;// (table) -> vider la table
   var sendMsg       = props.sendMsg;
 
   var [search, setSearch] = useState("");
   var [cat,    setCat]    = useState("Tous");
+  var [confirmClear, setConfirmClear] = useState(false);
 
   var cart  = session.cart || [];
   var total = cart.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
@@ -1699,41 +1701,71 @@ function TableCart(props) {
                    animation:"pinIn .22s ease"}}>
 
         {/* Header */}
-        <div style={{background:"#1E0E05",padding:"14px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-          <div style={{flex:1}}>
+        <div style={{background:"#1E0E05",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexShrink:0,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:120}}>
             <div style={{color:"#C8953A",fontFamily:"'Outfit',sans-serif",fontSize:18,fontWeight:800}}>
               🪑 {table.name}
             </div>
             <div style={{color:"rgba(253,248,240,.4)",fontSize:10}}>
               {table.seats} couverts{session.openedAt?" · Ouvert à "+session.openedAt:""}
+              {cart.length > 0 ? " · "+cart.reduce(function(s,i){return s+i.qty;},0)+" articles" : ""}
             </div>
           </div>
-          {cart.length > 0 && session.status !== "addition" && (
-            <button onClick={requestBill}
-              style={{padding:"7px 14px",borderRadius:9,border:"1px solid rgba(239,68,68,.4)",
-                      background:"rgba(239,68,68,.15)",color:"#FCA5A5",fontSize:12,fontWeight:700,
-                      cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
-              🧾 Appeler addition
+          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            {/* Vider la table */}
+            {cart.length > 0 && !confirmClear && (
+              <button onClick={function(){ setConfirmClear(true); }}
+                title="Vider la table"
+                style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(239,68,68,.3)",
+                        background:"rgba(239,68,68,.1)",color:"#FCA5A5",fontSize:11,fontWeight:600,
+                        cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                🗑
+              </button>
+            )}
+            {confirmClear && (
+              <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                <span style={{color:"#FCA5A5",fontSize:10}}>Vider ?</span>
+                <button onClick={function(){ onClearTable(table); setConfirmClear(false); }}
+                  style={{padding:"4px 8px",borderRadius:6,border:"none",background:"#EF4444",color:"#fff",
+                          fontSize:10,fontWeight:700,cursor:"pointer"}}>Oui</button>
+                <button onClick={function(){ setConfirmClear(false); }}
+                  style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(255,255,255,.2)",background:"transparent",
+                          color:"#FCA5A5",fontSize:10,cursor:"pointer"}}>Non</button>
+              </div>
+            )}
+            {/* Appeler l'addition */}
+            {cart.length > 0 && session.status !== "addition" && (
+              <button onClick={requestBill}
+                style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(239,68,68,.4)",
+                        background:"rgba(239,68,68,.15)",color:"#FCA5A5",fontSize:11,fontWeight:700,
+                        cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                🧾 Addition
+              </button>
+            )}
+            {session.status === "addition" && (
+              <div style={{padding:"6px 10px",borderRadius:8,background:"rgba(239,68,68,.2)",
+                           color:"#FCA5A5",fontSize:10,fontWeight:700,animation:"glow 1s ease infinite alternate"}}>
+                🔔 Addition demandée
+              </div>
+            )}
+            {/* Encaisser direct */}
+            {cart.length > 0 && (
+              <button onClick={function(){ onPayDirect(table, session); }}
+                style={{padding:"7px 14px",borderRadius:9,border:"none",
+                        background:"linear-gradient(135deg,#C8953A,#a07228)",
+                        color:"#1E0E05",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                💳 CHF {total.toFixed(2)}
+              </button>
+            )}
+            {/* Mettre en attente (fermer) */}
+            <button onClick={onClose}
+              title="Mettre en attente"
+              style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(200,149,58,.3)",
+                      background:"rgba(200,149,58,.1)",color:"#C8953A",fontSize:11,fontWeight:700,
+                      cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:4}}>
+              ⏸ Attente
             </button>
-          )}
-          {session.status === "addition" && (
-            <div style={{padding:"6px 12px",borderRadius:9,background:"rgba(239,68,68,.2)",
-                         color:"#FCA5A5",fontSize:11,fontWeight:700}}>
-              🔔 Addition demandée
-            </div>
-          )}
-          {cart.length > 0 && (
-            <button onClick={function(){ onPay(table, session); }}
-              style={{padding:"7px 16px",borderRadius:9,border:"none",
-                      background:"linear-gradient(135deg,#C8953A,#a07228)",
-                      color:"#1E0E05",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
-              💳 CHF {total.toFixed(2)}
-            </button>
-          )}
-          <button onClick={onClose}
-            style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:"50%",
-                    width:32,height:32,color:"rgba(253,248,240,.5)",fontSize:16,cursor:"pointer",
-                    display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          </div>
         </div>
 
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
@@ -1870,6 +1902,7 @@ function Vendeuse(props) {
   const [paidAnim,   setPaidAnim]   = useState(false);
   const [orderDone,  setOrderDone]  = useState(false);
   const [orderSent,  setOrderSent]  = useState(false); // true si "Commander" déjà cliqué
+  const [payTable,   setPayTable]   = useState(null);   // {table, session} pour paiement direct table
 
   var CATS_ACTIVE = ["Tous"].concat(
     activeProd.reduce(function(acc,p){
@@ -1964,6 +1997,44 @@ function Vendeuse(props) {
     }, 3500);
   }
 
+  // ── Gestion tables : paiement direct + vider ──
+  function clearTableSession(table) {
+    var key = myStore+"_"+table.id;
+    setTableSessions(function(prev){
+      var n = Object.assign({},prev);
+      delete n[key];
+      return n;
+    });
+    setSelectedTable(null);
+  }
+
+  function onTablePaid(payInfo) {
+    if (!payTable) return;
+    var tbl = payTable.table;
+    var sess = payTable.session;
+    var tCart = sess.cart || [];
+    var tTotal = tCart.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
+    var ts = Date.now();
+    var sale = {
+      id:      "VTE-" + ts,
+      time:    hm(),
+      date:    new Date().toLocaleDateString("fr-CH"),
+      store:   myStore,
+      client:  "Table "+tbl.name,
+      items:   tCart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price,emoji:i.emoji}; }),
+      total:   tTotal,
+      payInfo: payInfo,
+    };
+    addSale(sale);
+    setPayTable(null);
+    setLastSale(sale);
+    setShowReceipt(true);
+    // Clear table session
+    clearTableSession(tbl);
+    setPaidAnim(true);
+    setTimeout(function(){ setPaidAnim(false); }, 3500);
+  }
+
   function handleSave(updated) {
     var t = updated.items.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
     updOrder(updated.id, {items:updated.items, note:updated.note, total:t});
@@ -1995,20 +2066,22 @@ function Vendeuse(props) {
             });
           }}
           onClose={function(){ setSelectedTable(null); }}
-          onPay={function(table, session){
+          onPayDirect={function(table, session){
             setSelectedTable(null);
-            // Pré-remplir le panier POS avec les articles de la table
-            setCart(session.cart.slice());
-            setClient("Table "+table.name);
-            setTab("pos");
-            // Vider la session table
-            var key = myStore+"_"+table.id;
-            setTableSessions(function(prev){
-              var n = Object.assign({},prev);
-              delete n[key];
-              return n;
-            });
+            setPayTable({table:table, session:session});
           }}
+          onClearTable={function(table){
+            clearTableSession(table);
+          }}
+        />
+      )}
+      {payTable && (
+        <PayModal
+          total={(payTable.session.cart||[]).reduce(function(s,i){return s+i.price*i.qty;},0)}
+          cart={payTable.session.cart||[]}
+          tenant="BakeryOS"
+          onPaid={onTablePaid}
+          onClose={function(){ setPayTable(null); }}
         />
       )}
       {edit && <EditModal order={edit} onSave={handleSave} onClose={function(){ setEdit(null); }}
@@ -2019,15 +2092,34 @@ function Vendeuse(props) {
 
       {/* ── Barre onglets ── */}
       <div style={{display:"flex",background:"#fff",borderBottom:"1px solid #EDE0D0",padding:"0 16px",alignItems:"center",gap:0,flexShrink:0}}>
-        {[["pos","🛒 Caisse"],["tables","🪑 Tables"+(myTables.length?" ("+myTables.filter(function(t){var k=myStore+"_"+t.id;var s=tableSessions[k];return s&&s.cart&&s.cart.length>0;}).length+"/"+myTables.length+")":"")],["sales","📊 Ventes"],["history","📋 Commandes"]].map(function(item){
+        {(function(){
+          var addCount = myTables.filter(function(t){
+            var k=myStore+"_"+t.id; var s=tableSessions[k];
+            return s && s.status==="addition";
+          }).length;
+          var occCount = myTables.filter(function(t){
+            var k=myStore+"_"+t.id; var s=tableSessions[k];
+            return s && s.cart && s.cart.length>0;
+          }).length;
+          var tabLabel = "🪑 Tables"+(myTables.length?" ("+occCount+"/"+myTables.length+")":"");
+          return [["pos","🛒 Caisse"],["tables",tabLabel,addCount],["sales","📊 Ventes"],["history","📋 Commandes"]];
+        })().map(function(item){
           return (
             <button key={item[0]} onClick={function(){ setTab(item[0]); }}
               style={{padding:"13px 16px",border:"none",background:"none",
                       color:tab===item[0]?"#C8953A":"#8B7355",fontWeight:tab===item[0]?700:400,
                       fontSize:12,cursor:"pointer",fontFamily:"'Outfit',sans-serif",
                       borderBottom:tab===item[0]?"2px solid #C8953A":"2px solid transparent",
-                      transition:"all .16s",whiteSpace:"nowrap"}}>
+                      transition:"all .16s",whiteSpace:"nowrap",position:"relative"}}>
               {item[1]}
+              {item[2] > 0 && (
+                <span style={{position:"absolute",top:6,right:2,background:"#EF4444",color:"#fff",
+                              borderRadius:"50%",width:16,height:16,fontSize:9,fontWeight:800,
+                              display:"inline-flex",alignItems:"center",justifyContent:"center",
+                              animation:"glow 1s ease infinite alternate"}}>
+                  {item[2]}
+                </span>
+              )}
             </button>
           );
         })}
@@ -2053,12 +2145,114 @@ function Vendeuse(props) {
               <div style={{fontSize:12}}>L'admin configure le plan dans Gestion → votre magasin</div>
             </div>
           ) : (
-            <FloorPlanView
-              tables={myTables}
-              sessions={tableSessions}
-              store={myStore}
-              onSelectTable={function(t){ setSelectedTable(t); }}
-            />
+            <div style={{padding:16}}>
+              {/* Stats rapides */}
+              <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+                {(function(){
+                  var libre=0, occ=0, add=0, tCA=0;
+                  myTables.forEach(function(t){
+                    var k=myStore+"_"+t.id; var s=tableSessions[k];
+                    if(!s||!s.cart||s.cart.length===0) libre++;
+                    else if(s.status==="addition"){ add++; tCA+=s.cart.reduce(function(x,i){return x+i.price*i.qty;},0); }
+                    else { occ++; tCA+=s.cart.reduce(function(x,i){return x+i.price*i.qty;},0); }
+                  });
+                  return [
+                    {label:"Libres",c:"#10B981",bg:"#D1FAE5",v:libre},
+                    {label:"Occupées",c:"#F59E0B",bg:"#FEF3C7",v:occ},
+                    {label:"Additions",c:"#EF4444",bg:"#FEE2E2",v:add},
+                    {label:"CA Tables",c:"#C8953A",bg:"#FDF0D8",v:"CHF "+tCA.toFixed(2),bold:true},
+                  ];
+                })().map(function(s){
+                  return (
+                    <div key={s.label} style={{background:s.bg,borderRadius:10,padding:"8px 14px",minWidth:80,textAlign:"center"}}>
+                      <div style={{fontSize:s.bold?16:20,fontWeight:800,color:s.c,fontFamily:"'Outfit',sans-serif"}}>{s.v}</div>
+                      <div style={{fontSize:9,fontWeight:600,color:s.c,opacity:.8}}>{s.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Grille de cartes tables */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:20}}>
+                {myTables.map(function(t){
+                  var key = myStore+"_"+t.id;
+                  var sess = tableSessions[key];
+                  var isOccupied = sess && sess.cart && sess.cart.length > 0;
+                  var isAddition = sess && sess.status === "addition";
+                  var tTotal = isOccupied ? sess.cart.reduce(function(s,i){return s+i.price*i.qty;},0) : 0;
+                  var nbItems = isOccupied ? sess.cart.reduce(function(s,i){return s+i.qty;},0) : 0;
+
+                  var bg = isAddition ? "#FEE2E2" : isOccupied ? "#FEF3C7" : "#F0FDF4";
+                  var border = isAddition ? "#EF4444" : isOccupied ? "#F59E0B" : "#BBF7D0";
+                  var dot = isAddition ? "#EF4444" : isOccupied ? "#F59E0B" : "#10B981";
+                  var tx = isAddition ? "#991B1B" : isOccupied ? "#92400E" : "#15803D";
+                  var label = isAddition ? "Addition" : isOccupied ? "Occupée" : "Libre";
+
+                  return (
+                    <div key={t.id} className="ch"
+                      onClick={function(){ setSelectedTable(t); }}
+                      style={{background:bg,borderRadius:14,padding:"14px 12px",cursor:"pointer",
+                              border:"2px solid "+border,position:"relative",
+                              transition:"all .15s",
+                              animation:isAddition?"glow 1s ease infinite alternate":"none",
+                              boxShadow:isOccupied?"0 4px 12px rgba(0,0,0,.08)":"none"}}>
+                      {/* Status dot */}
+                      <div style={{position:"absolute",top:10,right:10,width:10,height:10,borderRadius:"50%",background:dot}} />
+
+                      <div style={{fontSize:16,fontWeight:800,color:tx,fontFamily:"'Outfit',sans-serif",marginBottom:2}}>
+                        🪑 {t.name}
+                      </div>
+                      <div style={{fontSize:10,color:tx,opacity:.7,marginBottom:isOccupied?8:0}}>
+                        {t.seats} couverts · {label}
+                      </div>
+
+                      {isOccupied && (
+                        <>
+                          <div style={{fontSize:10,color:tx,marginBottom:4}}>
+                            {nbItems} article{nbItems>1?"s":""}
+                            {sess.openedAt ? " · depuis "+sess.openedAt : ""}
+                          </div>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                            <span style={{fontSize:18,fontWeight:800,color:tx,fontFamily:"'Outfit',sans-serif"}}>
+                              CHF {tTotal.toFixed(2)}
+                            </span>
+                            {isAddition && <span style={{fontSize:14}}>🔔</span>}
+                          </div>
+                          {/* Mini liste articles */}
+                          <div style={{marginTop:6,borderTop:"1px solid rgba(0,0,0,.08)",paddingTop:5}}>
+                            {sess.cart.slice(0,3).map(function(item,idx){
+                              return (
+                                <div key={idx} style={{fontSize:9,color:tx,opacity:.7,lineHeight:1.5}}>
+                                  {item.emoji} {item.qty}× {item.name}
+                                </div>
+                              );
+                            })}
+                            {sess.cart.length > 3 && (
+                              <div style={{fontSize:9,color:tx,opacity:.5}}>+{sess.cart.length-3} autres…</div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {!isOccupied && (
+                        <div style={{marginTop:10,fontSize:10,color:"#15803D",fontWeight:600,textAlign:"center",opacity:.6}}>
+                          Toucher pour ouvrir
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Plan de salle SVG en dessous */}
+              <div style={{fontSize:12,fontWeight:700,color:"#5C4A32",marginBottom:8,fontFamily:"'Outfit',sans-serif"}}>📐 Plan de salle</div>
+              <FloorPlanView
+                tables={myTables}
+                sessions={tableSessions}
+                store={myStore}
+                onSelectTable={function(t){ setSelectedTable(t); }}
+              />
+            </div>
           )}
         </div>
       )}
@@ -2167,6 +2361,48 @@ function Vendeuse(props) {
 
           {/* Grille produits */}
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+            {/* ── Barre rapide tables ── */}
+            {myTables.length > 0 && (
+              <div style={{padding:"6px 12px",background:"#fff",borderBottom:"1px solid #EDE0D0",flexShrink:0,
+                           display:"flex",alignItems:"center",gap:6,overflowX:"auto"}}>
+                <span style={{fontSize:10,color:"#8B7355",fontWeight:600,flexShrink:0,marginRight:2}}>🪑</span>
+                {myTables.map(function(t){
+                  var key = myStore+"_"+t.id;
+                  var sess = tableSessions[key];
+                  var isOccupied = sess && sess.cart && sess.cart.length > 0;
+                  var isAddition = sess && sess.status === "addition";
+                  var tTotal = isOccupied ? sess.cart.reduce(function(s,i){return s+i.price*i.qty;},0) : 0;
+                  var nbItems = isOccupied ? sess.cart.reduce(function(s,i){return s+i.qty;},0) : 0;
+
+                  var bg = isAddition ? "#FEE2E2" : isOccupied ? "#FEF3C7" : "#F0FDF4";
+                  var border = isAddition ? "#EF4444" : isOccupied ? "#F59E0B" : "#BBF7D0";
+                  var tx = isAddition ? "#991B1B" : isOccupied ? "#92400E" : "#15803D";
+
+                  return (
+                    <button key={t.id}
+                      onClick={function(){ setSelectedTable(t); }}
+                      style={{
+                        padding: isOccupied ? "4px 8px 4px 10px" : "4px 10px",
+                        borderRadius:10, border:"1.5px solid "+border, background:bg,
+                        cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center", gap:5,
+                        fontFamily:"'Outfit',sans-serif", transition:"all .15s",
+                        animation: isAddition ? "glow 1s ease infinite alternate" : "none",
+                        boxShadow: isOccupied ? "0 2px 6px rgba(0,0,0,.08)" : "none",
+                      }}>
+                      <span style={{fontSize:11,fontWeight:700,color:tx}}>{t.name}</span>
+                      {isOccupied && (
+                        <span style={{fontSize:9,fontWeight:700,color:tx,
+                                      background:"rgba(0,0,0,.06)",padding:"1px 5px",borderRadius:6}}>
+                          {nbItems}art · {tTotal.toFixed(0)}
+                        </span>
+                      )}
+                      {isAddition && <span style={{fontSize:10}}>🔔</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Barre recherche + catégories */}
             <div style={{padding:"10px 12px 0",background:"#fff",borderBottom:"1px solid #EDE0D0",flexShrink:0}}>
