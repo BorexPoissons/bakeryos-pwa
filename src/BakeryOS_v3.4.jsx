@@ -1,4 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+
+/* ─── VERSION & UPDATE ───────────────────────────────────────── */
+const APP_VERSION = "3.5.0";
 
 /* ─── CONSTANTES ──────────────────────────────────────────────── */
 const PRODUCTS = [
@@ -135,6 +138,152 @@ const CSS = `
 `;
 
 /* ─── APP ROOT ────────────────────────────────────────────────── */
+
+/* — Persistance de session pour mise à jour en douceur — */
+var SESSION_KEY = "bakery_session_state";
+
+function saveSessionState(data) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch(e) {}
+}
+function loadSessionState() {
+  try {
+    var raw = localStorage.getItem(SESSION_KEY);
+    if (raw) {
+      localStorage.removeItem(SESSION_KEY); // usage unique
+      return JSON.parse(raw);
+    }
+  } catch(e) {}
+  return null;
+}
+
+/* — Composant UpdateBanner — */
+function UpdateBanner(props) {
+  var onUpdate     = props.onUpdate;
+  var hasOpenWork  = props.hasOpenWork; // bool : tables ouvertes ou panier non vide
+  var [show,       setShow]       = useState(false);
+  var [swWaiting,  setSwWaiting]  = useState(null);
+  var [dismissed,  setDismissed]  = useState(false);
+  var [countdown,  setCountdown]  = useState(null); // secondes restantes
+
+  // Détection mise à jour Service Worker
+  useEffect(function(){
+    if (!("serviceWorker" in navigator)) return;
+
+    function checkUpdate(reg) {
+      if (reg.waiting) {
+        setSwWaiting(reg.waiting);
+        setShow(true);
+      }
+    }
+
+    navigator.serviceWorker.getRegistration().then(function(reg){
+      if (!reg) return;
+      checkUpdate(reg);
+
+      reg.addEventListener("updatefound", function(){
+        var newSW = reg.installing;
+        if (!newSW) return;
+        newSW.addEventListener("statechange", function(){
+          if (newSW.state === "installed" && navigator.serviceWorker.controller) {
+            setSwWaiting(newSW);
+            setShow(true);
+          }
+        });
+      });
+    });
+
+    // Vérifier périodiquement (toutes les 2 min)
+    var interval = setInterval(function(){
+      navigator.serviceWorker.getRegistration().then(function(reg){
+        if (reg) { reg.update(); checkUpdate(reg); }
+      });
+    }, 120000);
+
+    // Écouter le message de contrôle changé → reload
+    var refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function(){
+      if (!refreshing) { refreshing = true; window.location.reload(); }
+    });
+
+    return function(){ clearInterval(interval); };
+  }, []);
+
+  function doUpdate() {
+    onUpdate(); // sauvegarde la session
+    if (swWaiting) {
+      swWaiting.postMessage({ type: "SKIP_WAITING" });
+    } else {
+      window.location.reload();
+    }
+  }
+
+  function startCountdown() {
+    setCountdown(5);
+  }
+
+  useEffect(function(){
+    if (countdown === null) return;
+    if (countdown <= 0) { doUpdate(); return; }
+    var timer = setTimeout(function(){ setCountdown(countdown - 1); }, 1000);
+    return function(){ clearTimeout(timer); };
+  }, [countdown]);
+
+  if (!show || dismissed) return null;
+
+  return (
+    <div style={{
+      position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", zIndex:9999,
+      background:"#1E0E05", borderRadius:16, padding:"12px 18px",
+      boxShadow:"0 12px 40px rgba(0,0,0,.35)", border:"1px solid rgba(200,149,58,.3)",
+      display:"flex", alignItems:"center", gap:12, maxWidth:480, width:"calc(100% - 32px)",
+      animation:"fadeUp .35s ease", fontFamily:"'Outfit',sans-serif",
+    }}>
+      {/* Icône */}
+      <div style={{width:38, height:38, borderRadius:10, background:"rgba(200,149,58,.15)",
+                   display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0}}>
+        🔄
+      </div>
+
+      {/* Texte */}
+      <div style={{flex:1, minWidth:0}}>
+        <div style={{color:"#FDF8F0", fontSize:13, fontWeight:700, marginBottom:2}}>
+          Nouvelle version disponible
+        </div>
+        <div style={{color:"rgba(253,248,240,.5)", fontSize:10, lineHeight:1.4}}>
+          {hasOpenWork
+            ? "Terminez vos tables/tickets en cours. Votre session sera sauvegardée."
+            : "Aucune table ouverte — mise à jour prête."}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{display:"flex", gap:6, flexShrink:0, alignItems:"center"}}>
+        {countdown !== null ? (
+          <div style={{color:"#C8953A", fontSize:12, fontWeight:700, minWidth:70, textAlign:"center"}}>
+            Mise à jour {countdown}s…
+          </div>
+        ) : (
+          <>
+            <button onClick={function(){ setDismissed(true); }}
+              style={{padding:"6px 10px", borderRadius:8, border:"1px solid rgba(255,255,255,.12)",
+                      background:"transparent", color:"rgba(253,248,240,.5)", fontSize:11,
+                      cursor:"pointer", fontFamily:"'Outfit',sans-serif"}}>
+              Plus tard
+            </button>
+            <button onClick={hasOpenWork ? startCountdown : doUpdate}
+              style={{padding:"7px 14px", borderRadius:8, border:"none",
+                      background:"linear-gradient(135deg,#C8953A,#a07228)",
+                      color:"#1E0E05", fontSize:12, fontWeight:800,
+                      cursor:"pointer", fontFamily:"'Outfit',sans-serif"}}>
+              {hasOpenWork ? "⏳ Mettre à jour" : "✓ Installer"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null); // utilisateur connecté
   const [users,       setUsers]       = useState(USERS0);
@@ -150,6 +299,24 @@ export default function App() {
   const [tableLayouts, setTableLayouts] = useState({});
   // Sessions de tables ouvertes : { [store_tableId]: {cart,openedAt,status} }
   const [tableSessions, setTableSessions] = useState({});
+  // Session restaurée après mise à jour
+  const [restoredSession, setRestoredSession] = useState(null);
+  const [showRestored,    setShowRestored]    = useState(false);
+
+  // ── Restaurer session sauvegardée au démarrage ──
+  useEffect(function(){
+    var saved = loadSessionState();
+    if (saved) {
+      setRestoredSession(saved);
+      if (saved.tableSessions) setTableSessions(saved.tableSessions);
+      if (saved.tableLayouts)  setTableLayouts(saved.tableLayouts);
+      if (saved.sales && saved.sales.length) setSales(saved.sales);
+      if (saved.orders && saved.orders.length) setOrders(saved.orders);
+      if (saved.catalogue) setCatalogue(saved.catalogue);
+      setShowRestored(true);
+      setTimeout(function(){ setShowRestored(false); }, 5000);
+    }
+  }, []);
 
   function addSale(sale) { setSales(function(prev){ return [sale].concat(prev); }); }
 
@@ -191,6 +358,26 @@ export default function App() {
   var otherMsgs = chat.filter(function(m){ return m.role !== role; }).length;
   var unread    = Math.max(0, otherMsgs - seenCount);
 
+  // ── Détection travail en cours (tables ouvertes, panier) ──
+  var hasOpenWork = Object.keys(tableSessions).some(function(k){
+    var s = tableSessions[k];
+    return s && s.cart && s.cart.length > 0;
+  });
+
+  // ── Sauvegarde session avant mise à jour ──
+  var handlePreUpdate = useCallback(function(){
+    saveSessionState({
+      tableSessions: tableSessions,
+      tableLayouts:  tableLayouts,
+      orders:        orders,
+      sales:         sales,
+      catalogue:     catalogue,
+      savedAt:       new Date().toISOString(),
+      version:       APP_VERSION,
+      user:          currentUser ? { login: currentUser.login, store: currentUser.store } : null,
+    });
+  }, [tableSessions, tableLayouts, orders, sales, catalogue, currentUser]);
+
   if (!currentUser) {
     return (
       <>
@@ -200,6 +387,16 @@ export default function App() {
           users={users}
           onLogin={function(user){ setCurrentUser(user); }}
         />
+        {showRestored && (
+          <div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",zIndex:9999,
+                       background:"#065F46",borderRadius:12,padding:"10px 18px",
+                       boxShadow:"0 8px 30px rgba(0,0,0,.25)",color:"#D1FAE5",fontSize:12,fontWeight:600,
+                       fontFamily:"'Outfit',sans-serif",animation:"fadeUp .35s ease",
+                       display:"flex",alignItems:"center",gap:8}}>
+            ✅ Session restaurée — connectez-vous pour reprendre
+          </div>
+        )}
+        <UpdateBanner onUpdate={handlePreUpdate} hasOpenWork={hasOpenWork} />
       </>
     );
   }
@@ -229,6 +426,25 @@ export default function App() {
           />
         )}
       </Layout>
+      {/* Notification session restaurée */}
+      {showRestored && (
+        <div style={{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",zIndex:9998,
+                     background:"#065F46",borderRadius:12,padding:"10px 18px",
+                     boxShadow:"0 8px 30px rgba(0,0,0,.25)",color:"#D1FAE5",fontSize:12,fontWeight:600,
+                     fontFamily:"'Outfit',sans-serif",animation:"fadeUp .35s ease",
+                     display:"flex",alignItems:"center",gap:8}}>
+          ✅ Session restaurée après mise à jour
+          {restoredSession && restoredSession.user && (
+            <span style={{opacity:.6,fontSize:10}}>
+              · sauvegardée à {new Date(restoredSession.savedAt).toLocaleTimeString("fr-CH",{hour:"2-digit",minute:"2-digit"})}
+            </span>
+          )}
+          <button onClick={function(){ setShowRestored(false); }}
+            style={{background:"transparent",border:"none",color:"#A7F3D0",cursor:"pointer",fontSize:14,marginLeft:4}}>✕</button>
+        </div>
+      )}
+      {/* Banner mise à jour */}
+      <UpdateBanner onUpdate={handlePreUpdate} hasOpenWork={hasOpenWork} />
     </>
   );
 }
@@ -642,6 +858,9 @@ function Layout(props) {
           onMouseOut={function(e){ e.currentTarget.style.background="rgba(255,255,255,.04)"; }}>
           Deconnexion
         </button>
+        <div style={{textAlign:"center",marginTop:6,fontSize:8,color:"rgba(253,248,240,.15)",fontFamily:"'Outfit',sans-serif"}}>
+          v{APP_VERSION}
+        </div>
       </div>
     </div>
   );
