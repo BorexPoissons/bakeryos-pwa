@@ -1,6 +1,6 @@
 import React    from "react";
 import ReactDOM  from "react-dom/client";
-import App       from "./BakeryOS_v3.jsx";
+import App       from "./BakeryOS_v3.4.jsx";
 
 // ── Enregistrement du Service Worker (géré par vite-plugin-pwa) ─────────────
 // Le plugin injecte automatiquement le SW — ce bloc affiche juste
