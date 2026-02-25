@@ -2172,7 +2172,6 @@ function Vendeuse(props) {
   var activeProd = catalogue.filter(function(p){ return p.active; });
 
   const [tab,        setTab]        = useState("pos");
-  const [selectedTable, setSelectedTable] = useState(null); // table ouverte dans TableCart
   const [search,     setSearch]     = useState("");
   const [cat,        setCat]        = useState("Tous");
   const [cart,       setCart]       = useState([]);
@@ -2187,9 +2186,14 @@ function Vendeuse(props) {
   const [showReceipt,setShowReceipt]= useState(false);
   const [showClient, setShowClient] = useState(false);
   const [paidAnim,   setPaidAnim]   = useState(false);
-  const [orderDone,  setOrderDone]  = useState(false);
-  const [orderSent,  setOrderSent]  = useState(false); // true si "Commander" déjà cliqué
-  const [payTable,   setPayTable]   = useState(null);   // {table, session} pour paiement direct table
+  // ── Nouveau flux tables ──
+  const [activeTable,    setActiveTable]    = useState(null);  // table en cours d'édition
+  const [showModeModal,  setShowModeModal]  = useState(false); // popup Sur place / Emporter / Livraison
+  const [showTablePicker,setShowTablePicker]= useState(false); // choix table pour "sur place"
+  const [showDelivery,   setShowDelivery]   = useState(false); // formulaire livraison
+  const [deliveryAddr,   setDeliveryAddr]   = useState("");
+  const [deliveryDriver, setDeliveryDriver] = useState("");
+  const [parkAnim,       setParkAnim]       = useState(false); // animation "en attente"
 
   var CATS_ACTIVE = ["Tous"].concat(
     activeProd.reduce(function(acc,p){
@@ -2215,42 +2219,80 @@ function Vendeuse(props) {
     else setCart(function(prev){ return prev.map(function(i){ return i.id===id ? Object.assign({},i,{qty:q}) : i; }); });
   }
   function removeItem(id) { setCart(function(prev){ return prev.filter(function(i){ return i.id!==id; }); }); }
-  function clearCart() { setCart([]); setClient(""); setNote(""); }
+  function clearCart() { setCart([]); setClient(""); setNote(""); setActiveTable(null); setDeliveryAddr(""); setDeliveryDriver(""); }
 
   var total = cart.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
 
-  function handlePay() {
+  // Auto-sync: quand le panier change et une table est active, sauvegarder
+  useEffect(function(){
+    if (activeTable && cart.length > 0) {
+      saveToTable(activeTable, cart);
+    }
+  }, [cart]);
+
+  // ── Valider → ouvre le popup de mode ──
+  function handleValidate() {
     if (!cart.length) {
       setCartErr("⚠️ Ajoutez au moins un article");
       setTimeout(function(){ setCartErr(""); }, 3000);
       return;
     }
-    setShowPay(true);
+    setShowModeModal(true);
   }
 
-  function handleOrder() {
-    if (!cart.length) {
-      setCartErr("⚠️ Ajoutez au moins un article");
-      setTimeout(function(){ setCartErr(""); }, 3000);
-      return;
+  // ── Charger une table dans le panier POS ──
+  function loadTable(t) {
+    // Si on travaille déjà sur une table, sauvegarder d'abord
+    if (activeTable && cart.length > 0) {
+      saveToTable(activeTable, cart);
     }
-    if (!client.trim()) {
-      setCartErr("⚠️ Saisissez le nom du client pour commander");
-      setTimeout(function(){ setCartErr(""); }, 3000);
-      return;
+    var key = myStore+"_"+t.id;
+    var sess = tableSessions[key];
+    if (sess && sess.cart && sess.cart.length > 0) {
+      setCart(sess.cart.slice());
+      setClient("Table "+t.name);
+    } else {
+      setCart([]);
+      setClient("Table "+t.name);
     }
-    addOrder({
-      id:       "CMD-" + Date.now(),
-      client:   client, store: store, note: note,
-      status:   "attente", priority: "normal", modReq: false,
-      items:    cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price}; }),
-      time:     hm(), total: total, dMethod: null, dest: null,
+    setActiveTable(t);
+    setNote("");
+    setTab("pos");
+  }
+
+  // ── Sauvegarder le panier sur une table ──
+  function saveToTable(t, items) {
+    var key = myStore+"_"+t.id;
+    setTableSessions(function(prev){
+      var updated = { cart: items.slice(), openedAt: (prev[key] && prev[key].openedAt) || hm(), status: items.length > 0 ? "occupee" : "libre" };
+      return Object.assign({},prev,{[key]:updated});
     });
-    setOrderSent(true);
-    setOrderDone(true);
-    setTimeout(function(){ setOrderDone(false); setOrderSent(false); clearCart(); }, 2200);
   }
 
+  // ── Mettre en attente (parquer sur table) ──
+  function parkOnTable(t) {
+    saveToTable(t, cart);
+    setParkAnim(true);
+    setTimeout(function(){
+      setCart([]); setClient(""); setNote(""); setActiveTable(null);
+      setParkAnim(false);
+    }, 1200);
+  }
+
+  // ── Libérer une table ──
+  function clearTableSession(t) {
+    var key = myStore+"_"+t.id;
+    setTableSessions(function(prev){
+      var n = Object.assign({},prev);
+      delete n[key];
+      return n;
+    });
+    if (activeTable && activeTable.id === t.id) {
+      setCart([]); setClient(""); setNote(""); setActiveTable(null);
+    }
+  }
+
+  // ── Encaisser (appelé par PayModal) ──
   function onPaid(payInfo) {
     var ts = Date.now();
     var sale = {
@@ -2264,19 +2306,25 @@ function Vendeuse(props) {
       payInfo: payInfo,
     };
     addSale(sale);
-    // Si client nommé ET "Commander" pas déjà cliqué → créer CMD (évite doublon)
-    if (client.trim() && !orderSent) {
+    // Créer commande en production si livraison
+    if (showDelivery || deliveryAddr) {
       addOrder({
         id: "CMD-" + (ts + 1),
-        client:client, store:store, note:note, status:"attente", priority:"normal", modReq:false,
+        client: client, store: store, note: note,
+        status: "attente", priority: "normal", modReq: false,
         items: cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price}; }),
-        time: hm(), total:total, dMethod:null, dest:null,
+        time: hm(), total: total,
+        dMethod: "livreur", dest: deliveryAddr, driver: deliveryDriver || null,
       });
     }
+    // Si table active, libérer la table
+    if (activeTable) {
+      clearTableSession(activeTable);
+    }
     setShowPay(false);
+    setShowDelivery(false);
     setLastSale(sale);
     setPaidAnim(true);
-    if (showClient) setPaidAnim(true);
     setShowReceipt(true);
     setTimeout(function(){
       clearCart();
@@ -2284,42 +2332,36 @@ function Vendeuse(props) {
     }, 3500);
   }
 
-  // ── Gestion tables : paiement direct + vider ──
-  function clearTableSession(table) {
-    var key = myStore+"_"+table.id;
-    setTableSessions(function(prev){
-      var n = Object.assign({},prev);
-      delete n[key];
-      return n;
-    });
-    setSelectedTable(null);
+  // ── Modes de validation ──
+  function onModeSelect(mode) {
+    setShowModeModal(false);
+    if (mode === "surplace") {
+      if (myTables.length > 0) {
+        setShowTablePicker(true);
+      } else {
+        // Pas de tables configurées → encaisser direct
+        setShowPay(true);
+      }
+    } else if (mode === "emporter") {
+      if (!client.trim()) setClient("À emporter");
+      setShowPay(true);
+    } else if (mode === "livraison") {
+      setShowDelivery(true);
+    }
   }
 
-  function onTablePaid(payInfo) {
-    if (!payTable) return;
-    var tbl = payTable.table;
-    var sess = payTable.session;
-    var tCart = sess.cart || [];
-    var tTotal = tCart.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
-    var ts = Date.now();
-    var sale = {
-      id:      "VTE-" + ts,
-      time:    hm(),
-      date:    new Date().toLocaleDateString("fr-CH"),
-      store:   myStore,
-      client:  "Table "+tbl.name,
-      items:   tCart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price,emoji:i.emoji}; }),
-      total:   tTotal,
-      payInfo: payInfo,
-    };
-    addSale(sale);
-    setPayTable(null);
-    setLastSale(sale);
-    setShowReceipt(true);
-    // Clear table session
-    clearTableSession(tbl);
-    setPaidAnim(true);
-    setTimeout(function(){ setPaidAnim(false); }, 3500);
+  // ── Choix table dans le picker ──
+  function onTablePick(t, action) {
+    setShowTablePicker(false);
+    setClient("Table "+t.name);
+    setActiveTable(t);
+    if (action === "attente") {
+      parkOnTable(t);
+    } else {
+      // action === "encaisser"
+      saveToTable(t, cart);
+      setShowPay(true);
+    }
   }
 
   function handleSave(updated) {
@@ -2338,39 +2380,182 @@ function Vendeuse(props) {
 
   return (
     <div style={{height:"100dvh",display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F3EE"}}>
-      {selectedTable && (
-        <TableCart
-          table={selectedTable}
-          session={tableSessions[myStore+"_"+selectedTable.id]}
-          catalogue={catalogue}
-          sendMsg={sendMsg}
-          onUpdate={function(patch){
-            var key = myStore+"_"+selectedTable.id;
-            setTableSessions(function(prev){
-              var s = prev[key] || {cart:[],openedAt:null,status:"libre"};
-              var updated = Object.assign({},s,patch);
-              return Object.assign({},prev,{[key]:updated});
-            });
-          }}
-          onClose={function(){ setSelectedTable(null); }}
-          onPayDirect={function(table, session){
-            setSelectedTable(null);
-            setPayTable({table:table, session:session});
-          }}
-          onClearTable={function(table){
-            clearTableSession(table);
-          }}
-        />
+
+      {/* ── Modal choix mode : Sur place / Emporter / Livraison ── */}
+      {showModeModal && (
+        <div style={{position:"fixed",inset:0,zIndex:850,background:"rgba(0,0,0,.55)",backdropFilter:"blur(4px)",
+                     display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+             onClick={function(){ setShowModeModal(false); }}>
+          <div style={{background:"#fff",borderRadius:20,padding:"28px 24px",maxWidth:400,width:"100%",
+                       boxShadow:"0 32px 80px rgba(0,0,0,.3)",animation:"pinIn .22s ease",textAlign:"center"}}
+               onClick={function(e){ e.stopPropagation(); }}>
+            <div style={{fontSize:15,fontWeight:800,color:"#1E0E05",fontFamily:"'Outfit',sans-serif",marginBottom:4}}>
+              Type de commande
+            </div>
+            <div style={{fontSize:11,color:"#8B7355",marginBottom:20}}>
+              {cart.reduce(function(s,i){return s+i.qty;},0)} articles · CHF {total.toFixed(2)}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[
+                {id:"surplace",  icon:"🍽", label:"Sur place",   desc:"Le client reste en salle",    bg:"#FEF3C7",border:"#F59E0B",tx:"#92400E"},
+                {id:"emporter",  icon:"📦", label:"À emporter",  desc:"Le client emporte sa commande",bg:"#DBEAFE",border:"#3B82F6",tx:"#1E40AF"},
+                {id:"livraison", icon:"🚐", label:"Livraison",   desc:"Envoi par chauffeur",          bg:"#F3E8FF",border:"#8B5CF6",tx:"#7C3AED"},
+              ].map(function(m){
+                return (
+                  <button key={m.id} onClick={function(){ onModeSelect(m.id); }}
+                    style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:14,
+                            border:"2px solid "+m.border,background:m.bg,cursor:"pointer",textAlign:"left",
+                            transition:"all .15s",fontFamily:"'Outfit',sans-serif"}}
+                    onMouseOver={function(e){ e.currentTarget.style.transform="scale(1.02)"; }}
+                    onMouseOut={function(e){ e.currentTarget.style.transform="scale(1)"; }}>
+                    <span style={{fontSize:28}}>{m.icon}</span>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:700,color:m.tx}}>{m.label}</div>
+                      <div style={{fontSize:10,color:m.tx,opacity:.7}}>{m.desc}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={function(){ setShowModeModal(false); }}
+              style={{marginTop:14,padding:"8px 20px",borderRadius:8,border:"1px solid #EDE0D0",
+                      background:"transparent",color:"#8B7355",fontSize:11,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+              Annuler
+            </button>
+          </div>
+        </div>
       )}
-      {payTable && (
-        <PayModal
-          total={(payTable.session.cart||[]).reduce(function(s,i){return s+i.price*i.qty;},0)}
-          cart={payTable.session.cart||[]}
-          tenant="BakeryOS"
-          onPaid={onTablePaid}
-          onClose={function(){ setPayTable(null); }}
-        />
+
+      {/* ── Modal choix table (sur place) ── */}
+      {showTablePicker && (
+        <div style={{position:"fixed",inset:0,zIndex:850,background:"rgba(0,0,0,.55)",backdropFilter:"blur(4px)",
+                     display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+             onClick={function(){ setShowTablePicker(false); }}>
+          <div style={{background:"#fff",borderRadius:20,padding:"24px",maxWidth:500,width:"100%",maxHeight:"80vh",overflowY:"auto",
+                       boxShadow:"0 32px 80px rgba(0,0,0,.3)",animation:"pinIn .22s ease"}}
+               onClick={function(e){ e.stopPropagation(); }}>
+            <div style={{fontSize:15,fontWeight:800,color:"#1E0E05",fontFamily:"'Outfit',sans-serif",marginBottom:4,textAlign:"center"}}>
+              🪑 Choisir une table
+            </div>
+            <div style={{fontSize:11,color:"#8B7355",marginBottom:16,textAlign:"center"}}>
+              CHF {total.toFixed(2)} · {cart.reduce(function(s,i){return s+i.qty;},0)} articles
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10,marginBottom:16}}>
+              {myTables.map(function(t){
+                var key = myStore+"_"+t.id;
+                var sess = tableSessions[key];
+                var isOccupied = sess && sess.cart && sess.cart.length > 0;
+                var bg = isOccupied ? "#FEF3C7" : "#F0FDF4";
+                var border = isOccupied ? "#F59E0B" : "#BBF7D0";
+                var tx = isOccupied ? "#92400E" : "#15803D";
+                return (
+                  <div key={t.id} style={{position:"relative"}}>
+                    <div style={{background:bg,borderRadius:12,padding:"12px 10px",textAlign:"center",
+                                border:"2px solid "+border,opacity:isOccupied?.5:1,
+                                cursor:isOccupied?"not-allowed":"default"}}>
+                      <div style={{fontSize:14,fontWeight:800,color:tx,fontFamily:"'Outfit',sans-serif"}}>🪑 {t.name}</div>
+                      <div style={{fontSize:9,color:tx,opacity:.7}}>{t.seats}p · {isOccupied?"Occupée":"Libre"}</div>
+                      {!isOccupied && (
+                        <div style={{display:"flex",gap:5,marginTop:8,justifyContent:"center"}}>
+                          <button onClick={function(){ onTablePick(t,"attente"); }}
+                            style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(200,149,58,.3)",
+                                    background:"rgba(200,149,58,.1)",color:"#92400E",fontSize:9,fontWeight:700,
+                                    cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                            ⏸ Attente
+                          </button>
+                          <button onClick={function(){ onTablePick(t,"encaisser"); }}
+                            style={{padding:"5px 8px",borderRadius:7,border:"none",
+                                    background:"linear-gradient(135deg,#C8953A,#a07228)",color:"#1E0E05",
+                                    fontSize:9,fontWeight:800,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                            💳 Payer
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={function(){ setShowTablePicker(false); }}
+              style={{width:"100%",padding:"10px",borderRadius:10,border:"1px solid #EDE0D0",
+                      background:"transparent",color:"#8B7355",fontSize:12,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+              Annuler
+            </button>
+          </div>
+        </div>
       )}
+
+      {/* ── Modal livraison ── */}
+      {showDelivery && (
+        <div style={{position:"fixed",inset:0,zIndex:850,background:"rgba(0,0,0,.55)",backdropFilter:"blur(4px)",
+                     display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+             onClick={function(){ setShowDelivery(false); }}>
+          <div style={{background:"#fff",borderRadius:20,padding:"24px",maxWidth:400,width:"100%",
+                       boxShadow:"0 32px 80px rgba(0,0,0,.3)",animation:"pinIn .22s ease"}}
+               onClick={function(e){ e.stopPropagation(); }}>
+            <div style={{fontSize:15,fontWeight:800,color:"#1E0E05",fontFamily:"'Outfit',sans-serif",marginBottom:16,textAlign:"center"}}>
+              🚐 Livraison
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:4}}>Nom du client</label>
+              <input value={client} onChange={function(e){ setClient(e.target.value); }}
+                placeholder="Nom du client"
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #EDE0D0",
+                        fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none",boxSizing:"border-box"}} />
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:4}}>Adresse de livraison</label>
+              <input value={deliveryAddr} onChange={function(e){ setDeliveryAddr(e.target.value); }}
+                placeholder="Rue, numéro, ville"
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #EDE0D0",
+                        fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none",boxSizing:"border-box"}} />
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:4}}>Chauffeur</label>
+              <select value={deliveryDriver} onChange={function(e){ setDeliveryDriver(e.target.value); }}
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #EDE0D0",
+                        fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none",background:"#fff",boxSizing:"border-box"}}>
+                <option value="">— Choisir —</option>
+                {DRIVERS.filter(function(d){ return d!=="Non assigné"; }).map(function(d){
+                  return <option key={d} value={d}>{d}</option>;
+                })}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){ setShowDelivery(false); }}
+                style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid #EDE0D0",
+                        background:"transparent",color:"#8B7355",fontSize:12,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                Annuler
+              </button>
+              <button onClick={function(){
+                  if (!client.trim()) { setCartErr("⚠️ Saisissez le nom du client"); setTimeout(function(){ setCartErr(""); },3000); return; }
+                  if (!deliveryAddr.trim()) { setCartErr("⚠️ Saisissez l'adresse"); setTimeout(function(){ setCartErr(""); },3000); return; }
+                  setShowDelivery(false);
+                  setShowPay(true);
+                }}
+                style={{flex:1,padding:"11px",borderRadius:10,border:"none",
+                        background:"linear-gradient(135deg,#C8953A,#a07228)",color:"#1E0E05",
+                        fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                💳 Encaisser CHF {total.toFixed(2)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Animation en attente ── */}
+      {parkAnim && (
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,.4)",
+                     display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#1E0E05",borderRadius:20,padding:"24px 36px",textAlign:"center",
+                       animation:"pinIn .25s ease",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
+            <div style={{fontSize:36,marginBottom:8}}>⏸</div>
+            <div style={{color:"#C8953A",fontSize:16,fontWeight:800,fontFamily:"'Outfit',sans-serif"}}>En attente</div>
+            <div style={{color:"rgba(253,248,240,.5)",fontSize:11,marginTop:4}}>Table réservée — reprendre quand prêt</div>
+          </div>
+        </div>
+      )}
+
       {edit && <EditModal order={edit} onSave={handleSave} onClose={function(){ setEdit(null); }}
                           onModReq={function(id){ updOrder(id,{modReq:true}); }} sendMsg={sendMsg} />}
       {showPay && <PayModal total={total} cart={cart} tenant="BakeryOS" onPaid={onPaid} onClose={function(){ setShowPay(false); }} />}
@@ -2477,7 +2662,7 @@ function Vendeuse(props) {
 
                   return (
                     <div key={t.id} className="ch"
-                      onClick={function(){ setSelectedTable(t); }}
+                      onClick={function(){ loadTable(t); }}
                       style={{background:bg,borderRadius:14,padding:"14px 12px",cursor:"pointer",
                               border:"2px solid "+border,position:"relative",
                               transition:"all .15s",
@@ -2537,7 +2722,7 @@ function Vendeuse(props) {
                 tables={myTables}
                 sessions={tableSessions}
                 store={myStore}
-                onSelectTable={function(t){ setSelectedTable(t); }}
+                onSelectTable={function(t){ loadTable(t); }}
               />
             </div>
           )}
@@ -2661,21 +2846,22 @@ function Vendeuse(props) {
                   var isAddition = sess && sess.status === "addition";
                   var tTotal = isOccupied ? sess.cart.reduce(function(s,i){return s+i.price*i.qty;},0) : 0;
                   var nbItems = isOccupied ? sess.cart.reduce(function(s,i){return s+i.qty;},0) : 0;
+                  var isActive = activeTable && activeTable.id === t.id;
 
-                  var bg = isAddition ? "#FEE2E2" : isOccupied ? "#FEF3C7" : "#F0FDF4";
-                  var border = isAddition ? "#EF4444" : isOccupied ? "#F59E0B" : "#BBF7D0";
-                  var tx = isAddition ? "#991B1B" : isOccupied ? "#92400E" : "#15803D";
+                  var bg = isActive ? "#FDF0D8" : isAddition ? "#FEE2E2" : isOccupied ? "#FEF3C7" : "#F0FDF4";
+                  var border = isActive ? "#C8953A" : isAddition ? "#EF4444" : isOccupied ? "#F59E0B" : "#BBF7D0";
+                  var tx = isActive ? "#92400E" : isAddition ? "#991B1B" : isOccupied ? "#92400E" : "#15803D";
 
                   return (
                     <button key={t.id}
-                      onClick={function(){ setSelectedTable(t); }}
+                      onClick={function(){ loadTable(t); }}
                       style={{
                         padding: isOccupied ? "4px 8px 4px 10px" : "4px 10px",
-                        borderRadius:10, border:"1.5px solid "+border, background:bg,
+                        borderRadius:10, border: (isActive?"2.5px":"1.5px")+" solid "+border, background:bg,
                         cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center", gap:5,
                         fontFamily:"'Outfit',sans-serif", transition:"all .15s",
                         animation: isAddition ? "glow 1s ease infinite alternate" : "none",
-                        boxShadow: isOccupied ? "0 2px 6px rgba(0,0,0,.08)" : "none",
+                        boxShadow: isActive ? "0 2px 8px rgba(200,149,58,.3)" : isOccupied ? "0 2px 6px rgba(0,0,0,.08)" : "none",
                       }}>
                       <span style={{fontSize:11,fontWeight:700,color:tx}}>{t.name}</span>
                       {isOccupied && (
@@ -2747,7 +2933,22 @@ function Vendeuse(props) {
             {/* Header panier */}
             <div style={{padding:"14px 16px 10px",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                <h3 style={{fontFamily:"'Outfit',sans-serif",fontSize:17,color:"#FDF8F0",margin:0}}>🛒 Panier</h3>
+                {activeTable ? (
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <h3 style={{fontFamily:"'Outfit',sans-serif",fontSize:17,color:"#C8953A",margin:0}}>🪑 {activeTable.name}</h3>
+                    <button onClick={function(){
+                        if (cart.length > 0) saveToTable(activeTable, cart);
+                        setCart([]); setClient(""); setNote(""); setActiveTable(null);
+                      }}
+                      title="Détacher la table"
+                      style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:6,
+                              color:"rgba(253,248,240,.4)",fontSize:10,padding:"2px 6px",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                      ✕ Détacher
+                    </button>
+                  </div>
+                ) : (
+                  <h3 style={{fontFamily:"'Outfit',sans-serif",fontSize:17,color:"#FDF8F0",margin:0}}>🛒 Panier</h3>
+                )}
                 {cart.length > 0 && (
                   <button onClick={clearCart}
                     style={{background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,
@@ -2756,9 +2957,9 @@ function Vendeuse(props) {
                   </button>
                 )}
               </div>
-              {/* Client (optionnel en POS) */}
+              {/* Client */}
               <input value={client} onChange={function(e){ setClient(e.target.value); }}
-                placeholder="👤 Client (optionnel)"
+                placeholder={activeTable ? "Table "+activeTable.name : "👤 Client (optionnel)"}
                 style={{width:"100%",padding:"7px 10px",borderRadius:8,border:"1px solid rgba(200,149,58,.25)",
                         background:"rgba(255,255,255,.05)",color:"#FDF8F0",fontSize:12,outline:"none",
                         fontFamily:"'Outfit',sans-serif"}} />
@@ -2768,8 +2969,8 @@ function Vendeuse(props) {
             <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
               {cart.length === 0 ? (
                 <div style={{textAlign:"center",color:"rgba(253,248,240,.2)",padding:"30px 0",fontSize:12}}>
-                  <div style={{fontSize:28,marginBottom:6}}>🧺</div>
-                  Touchez un produit pour l'ajouter
+                  <div style={{fontSize:28,marginBottom:6}}>{activeTable ? "🪑" : "🧺"}</div>
+                  {activeTable ? "Table vide — ajoutez des produits" : "Touchez un produit pour l'ajouter"}
                 </div>
               ) : cart.map(function(item){
                 return (
@@ -2805,7 +3006,7 @@ function Vendeuse(props) {
                         outline:"none",fontFamily:"'Outfit',sans-serif"}} />
             </div>
 
-            {/* Total + paiement */}
+            {/* Total + actions */}
             <div style={{padding:"12px 16px 16px",borderTop:"1px solid rgba(255,255,255,.1)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:12}}>
                 <span style={{color:"rgba(253,248,240,.5)",fontSize:12}}>Total</span>
@@ -2820,14 +3021,15 @@ function Vendeuse(props) {
                   {cartErr}
                 </div>
               )}
-              {orderDone ? (
-                <div style={{background:"linear-gradient(135deg,#065F46,#047857)",borderRadius:12,padding:"13px",
-                             textAlign:"center",color:"#D1FAE5",fontSize:13,fontWeight:700,animation:"pop .3s ease",marginBottom:8}}>
-                  ✅ Commande envoyée en production !
-                </div>
-              ) : (
+
+              {activeTable ? (
+                /* ── Mode table active : Encaisser ou En attente ── */
                 <>
-                  <button className="bg" onClick={handlePay}
+                  <button className="bg" onClick={function(){
+                      if (!cart.length) { setCartErr("⚠️ Panier vide"); setTimeout(function(){setCartErr("");},3000); return; }
+                      saveToTable(activeTable, cart);
+                      setShowPay(true);
+                    }}
                     style={{width:"100%",padding:"14px",borderRadius:12,border:"none",
                             background:cart.length?"linear-gradient(135deg,#C8953A,#a07228)":"rgba(255,255,255,.08)",
                             color:cart.length?"#1E0E05":"rgba(255,255,255,.2)",
@@ -2835,16 +3037,29 @@ function Vendeuse(props) {
                             fontFamily:"'Outfit',sans-serif",letterSpacing:.3,transition:"all .15s",marginBottom:8}}>
                     💳 Encaisser
                   </button>
-                  <button onClick={handleOrder}
+                  <button onClick={function(){
+                      if (cart.length > 0) parkOnTable(activeTable);
+                      else { setActiveTable(null); setClient(""); }
+                    }}
                     style={{width:"100%",padding:"11px",borderRadius:12,
                             border:"1px solid rgba(200,149,58,.35)",
                             background:"rgba(200,149,58,.08)",
                             color:"#C8953A",
                             fontSize:13,fontWeight:700,cursor:"pointer",
                             fontFamily:"'Outfit',sans-serif",transition:"all .15s"}}>
-                    📋 Commander
+                    ⏸ En attente
                   </button>
                 </>
+              ) : (
+                /* ── Mode sans table : Valider → choix mode ── */
+                <button className="bg" onClick={handleValidate}
+                  style={{width:"100%",padding:"14px",borderRadius:12,border:"none",
+                          background:cart.length?"linear-gradient(135deg,#C8953A,#a07228)":"rgba(255,255,255,.08)",
+                          color:cart.length?"#1E0E05":"rgba(255,255,255,.2)",
+                          fontSize:15,fontWeight:800,cursor:cart.length?"pointer":"not-allowed",
+                          fontFamily:"'Outfit',sans-serif",letterSpacing:.3,transition:"all .15s"}}>
+                  ✓ Valider
+                </button>
               )}
             </div>
           </div>
