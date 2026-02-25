@@ -166,6 +166,8 @@ function loadSessionState() {
 }
 
 /* — Composant UpdateBanner — */
+var _userApprovedUpdate = false; // flag global : reload UNIQUEMENT si l'utilisateur a cliqué
+
 function UpdateBanner(props) {
   var onUpdate     = props.onUpdate;
   var hasOpenWork  = props.hasOpenWork; // bool : tables ouvertes ou panier non vide
@@ -208,19 +210,30 @@ function UpdateBanner(props) {
       });
     }, 120000);
 
-    // Écouter le message de contrôle changé → reload
+    // IMPORTANT : reload UNIQUEMENT si l'utilisateur a approuvé
+    // Sans ce flag, un SKIP_WAITING déclenché par un autre onglet
+    // ou par le SW lui-même ferait un reload sauvage
     var refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", function(){
-      if (!refreshing) { refreshing = true; window.location.reload(); }
+      if (_userApprovedUpdate && !refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+      // Si pas approuvé → on ignore silencieusement, la bannière reste affichée
     });
 
     return function(){ clearInterval(interval); };
   }, []);
 
   function doUpdate() {
+    _userApprovedUpdate = true; // flag : maintenant le reload est autorisé
     onUpdate(); // sauvegarde la session
     if (swWaiting) {
       swWaiting.postMessage({ type: "SKIP_WAITING" });
+      // Fallback si controllerchange ne se déclenche pas (ex: même SW)
+      setTimeout(function(){
+        if (!document.hidden) window.location.reload();
+      }, 3000);
     } else {
       window.location.reload();
     }
@@ -268,8 +281,16 @@ function UpdateBanner(props) {
       {/* Actions */}
       <div style={{display:"flex", gap:6, flexShrink:0, alignItems:"center"}}>
         {countdown !== null ? (
-          <div style={{color:"#C8953A", fontSize:12, fontWeight:700, minWidth:70, textAlign:"center"}}>
-            Mise à jour {countdown}s…
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{color:"#C8953A", fontSize:12, fontWeight:700}}>
+              {countdown}s…
+            </div>
+            <button onClick={function(){ setCountdown(null); }}
+              style={{padding:"4px 8px", borderRadius:6, border:"1px solid rgba(239,68,68,.3)",
+                      background:"rgba(239,68,68,.1)", color:"#FCA5A5", fontSize:10,
+                      cursor:"pointer", fontFamily:"'Outfit',sans-serif"}}>
+              Annuler
+            </button>
           </div>
         ) : (
           <>
