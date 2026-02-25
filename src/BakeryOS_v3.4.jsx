@@ -139,6 +139,15 @@ const CSS = `
 
 /* ─── APP ROOT ────────────────────────────────────────────────── */
 
+/* — Helpers persistance localStorage — */
+var LS_PREFIX = "bakery_";
+function lsGet(key, fallback) {
+  try { var v = localStorage.getItem(LS_PREFIX+key); return v ? JSON.parse(v) : fallback; } catch(e) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(LS_PREFIX+key, JSON.stringify(val)); } catch(e) {}
+}
+
 /* — Persistance de session pour mise à jour en douceur — */
 var SESSION_KEY = "bakery_session_state";
 
@@ -285,22 +294,21 @@ function UpdateBanner(props) {
 }
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null); // utilisateur connecté
-  const [users,       setUsers]       = useState(USERS0);
-  const [tenant,      setTenant]      = useState(function(){ try{ return localStorage.getItem("bakery_tenant") || "Boulangerie Maison Blanche"; }catch(e){ return "Boulangerie Maison Blanche"; } });
-  const [orders,      setOrders]      = useState(O0);
-  const [chat,        setChat]        = useState(C0);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users,       setUsers]       = useState(function(){ return lsGet("users", USERS0); });
+  const [tenant,      setTenant]      = useState(function(){ return lsGet("tenant", "Boulangerie Maison Blanche"); });
+  const [orders,      setOrders]      = useState(function(){ return lsGet("orders", O0); });
+  const [chat,        setChat]        = useState(function(){ return lsGet("chat", C0); });
   const [chatOpen,    setChatOpen]    = useState(false);
   const [logoUrl,     setLogoUrl]     = useState(function(){ try{ return localStorage.getItem("bakery_logo") || null; }catch(e){ return null; } });
   const [seenCount,   setSeenCount]   = useState(0);
-  const [catalogue,   setCatalogue]   = useState(PRODUCTS.map(function(p){ return Object.assign({},p,{active:true,stock:0}); }));
-  const [sales,       setSales]       = useState([]);
+  const [catalogue,   setCatalogue]   = useState(function(){ return lsGet("catalogue", PRODUCTS.map(function(p){ return Object.assign({},p,{active:true,stock:0}); })); });
+  const [sales,       setSales]       = useState(function(){ return lsGet("sales", []); });
   // Tables par magasin : { [store]: [{id,name,x,y,shape,seats}] }
-  const [tableLayouts, setTableLayouts] = useState({});
+  const [tableLayouts, setTableLayouts] = useState(function(){ return lsGet("tableLayouts", {}); });
   // Sessions de tables ouvertes : { [store_tableId]: {cart,openedAt,status} }
-  const [tableSessions, setTableSessions] = useState({});
+  const [tableSessions, setTableSessions] = useState(function(){ return lsGet("tableSessions", {}); });
   // Session restaurée après mise à jour
-  const [restoredSession, setRestoredSession] = useState(null);
   const [showRestored,    setShowRestored]    = useState(false);
   // PWA install prompt
   const [installPrompt,   setInstallPrompt]   = useState(null);
@@ -308,7 +316,6 @@ export default function App() {
 
   // ── Capturer beforeinstallprompt ──
   useEffect(function(){
-    // Vérifier si déjà installé (standalone ou iOS)
     if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) {
       setIsInstalled(true);
       return;
@@ -322,16 +329,10 @@ export default function App() {
     return function(){ window.removeEventListener("beforeinstallprompt", onPrompt); };
   }, []);
 
-  // ── Restaurer session sauvegardée au démarrage ──
+  // ── Vérifier si on revient d'une mise à jour SW ──
   useEffect(function(){
     var saved = loadSessionState();
     if (saved) {
-      setRestoredSession(saved);
-      if (saved.tableSessions) setTableSessions(saved.tableSessions);
-      if (saved.tableLayouts)  setTableLayouts(saved.tableLayouts);
-      if (saved.sales && saved.sales.length) setSales(saved.sales);
-      if (saved.orders && saved.orders.length) setOrders(saved.orders);
-      if (saved.catalogue) setCatalogue(saved.catalogue);
       setShowRestored(true);
       setTimeout(function(){ setShowRestored(false); }, 5000);
     }
@@ -339,8 +340,15 @@ export default function App() {
 
   function addSale(sale) { setSales(function(prev){ return [sale].concat(prev); }); }
 
-  // Persist tenant & logo across page reloads
-  useEffect(function(){ try{ localStorage.setItem("bakery_tenant", tenant); }catch(e){} }, [tenant]);
+  // ── Persist all data to localStorage ──
+  useEffect(function(){ lsSet("tenant", tenant); }, [tenant]);
+  useEffect(function(){ lsSet("users", users); }, [users]);
+  useEffect(function(){ lsSet("orders", orders); }, [orders]);
+  useEffect(function(){ lsSet("chat", chat); }, [chat]);
+  useEffect(function(){ lsSet("catalogue", catalogue); }, [catalogue]);
+  useEffect(function(){ lsSet("sales", sales); }, [sales]);
+  useEffect(function(){ lsSet("tableLayouts", tableLayouts); }, [tableLayouts]);
+  useEffect(function(){ lsSet("tableSessions", tableSessions); }, [tableSessions]);
   useEffect(function(){
     try{
       if (logoUrl) localStorage.setItem("bakery_logo", logoUrl);
@@ -430,7 +438,7 @@ export default function App() {
               markRead={function(){ setSeenCount(otherMsgs); }}
               goRole={function(r){ setViewRole(r); }}
               onLogout={function(){ setCurrentUser(null); setChatOpen(false); setSeenCount(0); }}>
-        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} />}
+        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} tenant={tenant} />}
         {displayRole === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} />}
         {displayRole === "livreur"    && <Livreur    orders={orders} updOrder={updOrder} userStore={userStore} currentUser={currentUser} />}
         {(displayRole === "admin" || displayRole === "gerant" || (role==="admin" && !viewRole)) && (
@@ -454,12 +462,7 @@ export default function App() {
                      boxShadow:"0 8px 30px rgba(0,0,0,.25)",color:"#D1FAE5",fontSize:12,fontWeight:600,
                      fontFamily:"'Outfit',sans-serif",animation:"fadeUp .35s ease",
                      display:"flex",alignItems:"center",gap:8}}>
-          ✅ Session restaurée après mise à jour
-          {restoredSession && restoredSession.user && (
-            <span style={{opacity:.6,fontSize:10}}>
-              · sauvegardée à {new Date(restoredSession.savedAt).toLocaleTimeString("fr-CH",{hour:"2-digit",minute:"2-digit"})}
-            </span>
-          )}
+          ✅ Mise à jour installée — session restaurée
           <button onClick={function(){ setShowRestored(false); }}
             style={{background:"transparent",border:"none",color:"#A7F3D0",cursor:"pointer",fontSize:14,marginLeft:4}}>✕</button>
         </div>
@@ -2165,6 +2168,7 @@ function Vendeuse(props) {
   var tableLayouts    = props.tableLayouts    || {};
   var tableSessions   = props.tableSessions   || {};
   var setTableSessions= props.setTableSessions|| function(){};
+  var tenant    = props.tenant    || "BakeryOS";
 
   var myStore    = userStore || STORES[0];
   var myTables   = tableLayouts[myStore] || [];
@@ -2194,6 +2198,8 @@ function Vendeuse(props) {
   const [deliveryAddr,   setDeliveryAddr]   = useState("");
   const [deliveryDriver, setDeliveryDriver] = useState("");
   const [parkAnim,       setParkAnim]       = useState(false); // animation "en attente"
+  const [pendingTickets, setPendingTickets]  = useState([]); // tickets en attente sans table
+  const [printingTicket, setPrintingTicket]  = useState(null); // ticket en cours d'impression
 
   var CATS_ACTIVE = ["Tous"].concat(
     activeProd.reduce(function(acc,p){
@@ -2364,6 +2370,72 @@ function Vendeuse(props) {
     }
   }
 
+  // ── Mettre ticket en attente (sans table) ──
+  function parkTicket() {
+    setShowModeModal(false);
+    var ticket = {
+      id: "TK-"+Date.now(),
+      cart: cart.slice(),
+      client: client || "Client",
+      note: note,
+      time: hm(),
+      total: total,
+    };
+    setPendingTickets(function(prev){ return prev.concat([ticket]); });
+    setParkAnim(true);
+    setTimeout(function(){
+      clearCart();
+      setParkAnim(false);
+    }, 1200);
+  }
+
+  // ── Reprendre un ticket en attente ──
+  function resumeTicket(ticket) {
+    // Sauvegarder panier courant si besoin
+    if (activeTable && cart.length > 0) saveToTable(activeTable, cart);
+    setCart(ticket.cart.slice());
+    setClient(ticket.client);
+    setNote(ticket.note || "");
+    setActiveTable(null);
+    // Retirer le ticket
+    setPendingTickets(function(prev){ return prev.filter(function(t){ return t.id !== ticket.id; }); });
+    setTab("pos");
+  }
+
+  // ── Supprimer un ticket en attente ──
+  function deleteTicket(ticketId) {
+    setPendingTickets(function(prev){ return prev.filter(function(t){ return t.id !== ticketId; }); });
+  }
+
+  // ── Imprimer ticket (ouvre fenêtre print) ──
+  function printTicket(itemsOrTicket) {
+    var items = itemsOrTicket.cart || itemsOrTicket;
+    var ticketClient = itemsOrTicket.client || client || "Client";
+    var ticketTotal = items.reduce(function(s,i){ return s+i.price*i.qty; },0);
+    var w = window.open("","_blank","width=320,height=600");
+    if (!w) return;
+    w.document.write(
+      '<html><head><style>body{font-family:monospace;font-size:12px;padding:10px;max-width:280px;margin:0 auto}'+
+      '.line{display:flex;justify-content:space-between;margin:2px 0}.sep{border-top:1px dashed #000;margin:6px 0}'+
+      '.center{text-align:center}.bold{font-weight:bold}.big{font-size:16px}</style></head><body>'+
+      '<div class="center bold big">'+tenant+'</div>'+
+      '<div class="center" style="font-size:10px;margin-bottom:8px">'+myStore+'</div>'+
+      '<div class="sep"></div>'+
+      '<div class="center" style="margin-bottom:4px">'+ticketClient+' · '+hm()+'</div>'+
+      '<div class="sep"></div>'+
+      items.map(function(i){
+        return '<div class="line"><span>'+i.qty+'× '+i.name+'</span><span>'+((i.price*i.qty).toFixed(2))+'</span></div>';
+      }).join('')+
+      '<div class="sep"></div>'+
+      '<div class="line bold big"><span>TOTAL</span><span>CHF '+ticketTotal.toFixed(2)+'</span></div>'+
+      '<div class="sep"></div>'+
+      '<div class="center" style="font-size:9px;margin-top:8px">Merci de votre visite !</div>'+
+      '</body></html>'
+    );
+    w.document.close();
+    w.print();
+  }
+
   function handleSave(updated) {
     var t = updated.items.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
     updOrder(updated.id, {items:updated.items, note:updated.note, total:t});
@@ -2397,9 +2469,9 @@ function Vendeuse(props) {
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {[
-                {id:"surplace",  icon:"🍽", label:"Sur place",   desc:"Le client reste en salle",    bg:"#FEF3C7",border:"#F59E0B",tx:"#92400E"},
-                {id:"emporter",  icon:"📦", label:"À emporter",  desc:"Le client emporte sa commande",bg:"#DBEAFE",border:"#3B82F6",tx:"#1E40AF"},
-                {id:"livraison", icon:"🚐", label:"Livraison",   desc:"Envoi par chauffeur",          bg:"#F3E8FF",border:"#8B5CF6",tx:"#7C3AED"},
+                {id:"surplace",  icon:"🍽", label:"Sur place",   desc:"Le client reste en salle",     bg:"#FEF3C7",border:"#F59E0B",tx:"#92400E"},
+                {id:"emporter",  icon:"📦", label:"À emporter",  desc:"Le client emporte sa commande", bg:"#DBEAFE",border:"#3B82F6",tx:"#1E40AF"},
+                {id:"livraison", icon:"🚐", label:"Livraison",   desc:"Envoi par chauffeur",           bg:"#F3E8FF",border:"#8B5CF6",tx:"#7C3AED"},
               ].map(function(m){
                 return (
                   <button key={m.id} onClick={function(){ onModeSelect(m.id); }}
@@ -2416,6 +2488,21 @@ function Vendeuse(props) {
                   </button>
                 );
               })}
+            </div>
+            {/* Actions secondaires */}
+            <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"center"}}>
+              <button onClick={parkTicket}
+                style={{padding:"9px 16px",borderRadius:10,border:"1px solid #EDE0D0",
+                        background:"#F7F3EE",color:"#5C4A32",fontSize:12,fontWeight:700,
+                        cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:6}}>
+                ⏸ En attente
+              </button>
+              <button onClick={function(){ printTicket(cart); setShowModeModal(false); }}
+                style={{padding:"9px 16px",borderRadius:10,border:"1px solid #EDE0D0",
+                        background:"#F7F3EE",color:"#5C4A32",fontSize:12,fontWeight:700,
+                        cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:6}}>
+                🖨 Imprimer
+              </button>
             </div>
             <button onClick={function(){ setShowModeModal(false); }}
               style={{marginTop:14,padding:"8px 20px",borderRadius:8,border:"1px solid #EDE0D0",
@@ -2876,6 +2963,30 @@ function Vendeuse(props) {
                 })}
               </div>
             )}
+            {/* ── Tickets en attente (quick chips) ── */}
+            {pendingTickets.length > 0 && (
+              <div style={{padding:"4px 12px 4px",background:"#fff",borderBottom:"1px solid #EDE0D0",flexShrink:0,
+                           display:"flex",alignItems:"center",gap:6,overflowX:"auto"}}>
+                <span style={{fontSize:10,color:"#8B7355",fontWeight:600,flexShrink:0}}>⏸</span>
+                {pendingTickets.map(function(tk){
+                  return (
+                    <button key={tk.id} onClick={function(){ resumeTicket(tk); }}
+                      style={{padding:"4px 10px",borderRadius:10,border:"1.5px solid #8B5CF6",
+                              background:"#F3E8FF",cursor:"pointer",flexShrink:0,
+                              display:"flex",alignItems:"center",gap:5,
+                              fontFamily:"'Outfit',sans-serif",transition:"all .15s"}}>
+                      <span style={{fontSize:11,fontWeight:700,color:"#7C3AED"}}>{tk.client}</span>
+                      <span style={{fontSize:9,fontWeight:700,color:"#7C3AED",
+                                    background:"rgba(0,0,0,.06)",padding:"1px 5px",borderRadius:6}}>
+                        {tk.time} · {tk.total.toFixed(0)}
+                      </span>
+                      <span onClick={function(e){ e.stopPropagation(); deleteTicket(tk.id); }}
+                        style={{fontSize:9,color:"#DC2626",cursor:"pointer",marginLeft:2}}>✕</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Barre recherche + catégories */}
             <div style={{padding:"10px 12px 0",background:"#fff",borderBottom:"1px solid #EDE0D0",flexShrink:0}}>
@@ -3023,7 +3134,7 @@ function Vendeuse(props) {
               )}
 
               {activeTable ? (
-                /* ── Mode table active : Encaisser ou En attente ── */
+                /* ── Mode table active : Encaisser, Imprimer ou En attente ── */
                 <>
                   <button className="bg" onClick={function(){
                       if (!cart.length) { setCartErr("⚠️ Panier vide"); setTimeout(function(){setCartErr("");},3000); return; }
@@ -3034,21 +3145,31 @@ function Vendeuse(props) {
                             background:cart.length?"linear-gradient(135deg,#C8953A,#a07228)":"rgba(255,255,255,.08)",
                             color:cart.length?"#1E0E05":"rgba(255,255,255,.2)",
                             fontSize:15,fontWeight:800,cursor:cart.length?"pointer":"not-allowed",
-                            fontFamily:"'Outfit',sans-serif",letterSpacing:.3,transition:"all .15s",marginBottom:8}}>
+                            fontFamily:"'Outfit',sans-serif",letterSpacing:.3,transition:"all .15s",marginBottom:6}}>
                     💳 Encaisser
                   </button>
-                  <button onClick={function(){
-                      if (cart.length > 0) parkOnTable(activeTable);
-                      else { setActiveTable(null); setClient(""); }
-                    }}
-                    style={{width:"100%",padding:"11px",borderRadius:12,
-                            border:"1px solid rgba(200,149,58,.35)",
-                            background:"rgba(200,149,58,.08)",
-                            color:"#C8953A",
-                            fontSize:13,fontWeight:700,cursor:"pointer",
-                            fontFamily:"'Outfit',sans-serif",transition:"all .15s"}}>
-                    ⏸ En attente
-                  </button>
+                  <div style={{display:"flex",gap:6,marginBottom:0}}>
+                    <button onClick={function(){ if (cart.length) printTicket(cart); }}
+                      style={{flex:1,padding:"9px",borderRadius:10,
+                              border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.06)",
+                              color:cart.length?"rgba(253,248,240,.6)":"rgba(255,255,255,.15)",
+                              fontSize:11,fontWeight:600,cursor:cart.length?"pointer":"not-allowed",
+                              fontFamily:"'Outfit',sans-serif",transition:"all .15s"}}>
+                      🖨 Imprimer
+                    </button>
+                    <button onClick={function(){
+                        if (cart.length > 0) parkOnTable(activeTable);
+                        else { setActiveTable(null); setClient(""); }
+                      }}
+                      style={{flex:1,padding:"9px",borderRadius:10,
+                              border:"1px solid rgba(200,149,58,.35)",
+                              background:"rgba(200,149,58,.08)",
+                              color:"#C8953A",
+                              fontSize:11,fontWeight:600,cursor:"pointer",
+                              fontFamily:"'Outfit',sans-serif",transition:"all .15s"}}>
+                      ⏸ Attente
+                    </button>
+                  </div>
                 </>
               ) : (
                 /* ── Mode sans table : Valider → choix mode ── */
