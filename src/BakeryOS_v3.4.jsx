@@ -1,22 +1,22 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 /* ─── VERSION & UPDATE ───────────────────────────────────────── */
-const APP_VERSION = "3.5.0";
+const APP_VERSION = "3.7.0";
 
 /* ─── CONSTANTES ──────────────────────────────────────────────── */
 const PRODUCTS = [
-  { id:1,  name:"Croissant au beurre",    price:2.40,  cost:0.85,  category:"Viennoiseries", emoji:"🥐" },
-  { id:2,  name:"Pain au chocolat",       price:2.80,  cost:1.05,  category:"Viennoiseries", emoji:"🍫" },
-  { id:3,  name:"Baguette tradition",     price:1.50,  cost:0.52,  category:"Pains",         emoji:"🥖" },
-  { id:4,  name:"Pain de campagne",       price:4.20,  cost:1.40,  category:"Pains",         emoji:"🍞" },
-  { id:5,  name:"Tarte aux pommes",       price:28.00, cost:9.50,  category:"Tartes",        emoji:"🥧" },
-  { id:6,  name:"Eclair chocolat",        price:4.50,  cost:1.60,  category:"Patisseries",   emoji:"🍮" },
-  { id:7,  name:"Mille-feuille",          price:5.20,  cost:1.90,  category:"Patisseries",   emoji:"🍰" },
-  { id:8,  name:"Chausson aux pommes",    price:2.60,  cost:0.90,  category:"Viennoiseries", emoji:"🍏" },
-  { id:9,  name:"Macaron (6 pcs)",        price:12.00, cost:4.20,  category:"Patisseries",   emoji:"🎨" },
-  { id:10, name:"Sandwich jambon-beurre", price:5.50,  cost:2.30,  category:"Traiteur",      emoji:"🥪" },
-  { id:11, name:"Quiche lorraine",        price:6.80,  cost:2.60,  category:"Traiteur",      emoji:"🥗" },
-  { id:12, name:"Financier amande",       price:1.80,  cost:0.58,  category:"Patisseries",   emoji:"✨" },
+  { id:1,  name:"Croissant au beurre",    price:2.40,  cost:0.85,  category:"Viennoiseries", emoji:"🥐", tva:2.6 },
+  { id:2,  name:"Pain au chocolat",       price:2.80,  cost:1.05,  category:"Viennoiseries", emoji:"🍫", tva:2.6 },
+  { id:3,  name:"Baguette tradition",     price:1.50,  cost:0.52,  category:"Pains",         emoji:"🥖", tva:2.6 },
+  { id:4,  name:"Pain de campagne",       price:4.20,  cost:1.40,  category:"Pains",         emoji:"🍞", tva:2.6 },
+  { id:5,  name:"Tarte aux pommes",       price:28.00, cost:9.50,  category:"Tartes",        emoji:"🥧", tva:2.6 },
+  { id:6,  name:"Eclair chocolat",        price:4.50,  cost:1.60,  category:"Patisseries",   emoji:"🍮", tva:2.6 },
+  { id:7,  name:"Mille-feuille",          price:5.20,  cost:1.90,  category:"Patisseries",   emoji:"🍰", tva:2.6 },
+  { id:8,  name:"Chausson aux pommes",    price:2.60,  cost:0.90,  category:"Viennoiseries", emoji:"🍏", tva:2.6 },
+  { id:9,  name:"Macaron (6 pcs)",        price:12.00, cost:4.20,  category:"Patisseries",   emoji:"🎨", tva:2.6 },
+  { id:10, name:"Sandwich jambon-beurre", price:5.50,  cost:2.30,  category:"Traiteur",      emoji:"🥪", tva:8.1 },
+  { id:11, name:"Quiche lorraine",        price:6.80,  cost:2.60,  category:"Traiteur",      emoji:"🥗", tva:8.1 },
+  { id:12, name:"Financier amande",       price:1.80,  cost:0.58,  category:"Patisseries",   emoji:"✨", tva:2.6 },
 ];
 const STORES = ["Rue du Four 12", "Place de la Liberte 3", "Avenue des Fleurs 8"];
 const CATS   = ["Tous","Viennoiseries","Pains","Patisseries","Tartes","Traiteur"];
@@ -59,6 +59,10 @@ const PERMS_DEF = {
     { id:"gestion",       label:"⚙️ Gestion magasins",  group:"adminTabs" },
     { id:"utilisateurs",  label:"👥 Utilisateurs",      group:"adminTabs" },
     { id:"supervision",   label:"📈 Supervision",        group:"adminTabs" },
+    { id:"cartes",         label:"🎁 Cartes cadeaux",     group:"adminTabs" },
+    { id:"abonnements",   label:"🔄 Abonnements",        group:"adminTabs" },
+    { id:"planning",      label:"🏭 Planning production",  group:"adminTabs" },
+    { id:"reporting",     label:"📊 Rapport",               group:"adminTabs" },
   ],
   // Fonctionnalités
   features: [
@@ -69,14 +73,16 @@ const PERMS_DEF = {
     { id:"edit_logo",        label:"🖼️ Modifier le logo",              group:"features" },
     { id:"manage_staff",     label:"👤 Gérer l'équipe et les horaires", group:"features" },
     { id:"export_data",      label:"📤 Exporter données / CSV",         group:"features" },
+    { id:"manage_subscriptions", label:"🔄 Gérer les abonnements",     group:"features" },
+    { id:"manage_recipes",       label:"📖 Gérer les fiches recettes", group:"features" },
   ],
 };
 
 // Permissions par défaut selon le rôle
 function defaultPerms(role) {
   switch(role) {
-    case "admin":      return { screens:["vendeuse","production","livreur","gerant","admin"], adminTabs:["dashboard","commandes","catalogue","gestion","utilisateurs","supervision"], features:["create_order","edit_catalogue","view_cost","chat","edit_logo","manage_staff","export_data"] };
-    case "gerant":     return { screens:["gerant"], adminTabs:["dashboard","commandes","catalogue","gestion"], features:["create_order","chat","manage_staff"] };
+    case "admin":      return { screens:["vendeuse","production","livreur","gerant","admin"], adminTabs:["dashboard","commandes","catalogue","gestion","utilisateurs","supervision","cartes","abonnements","planning","reporting"], features:["create_order","edit_catalogue","view_cost","chat","edit_logo","manage_staff","export_data","manage_subscriptions","manage_recipes"] };
+    case "gerant":     return { screens:["gerant"], adminTabs:["dashboard","commandes","catalogue","gestion","abonnements","planning","reporting"], features:["create_order","chat","manage_staff","manage_subscriptions"] };
     case "vendeuse":   return { screens:["vendeuse"], adminTabs:[], features:["chat"] };
     case "production": return { screens:["production"], adminTabs:[], features:["chat"] };
     case "livreur":    return { screens:["livreur"], adminTabs:[], features:[] };
@@ -104,6 +110,10 @@ const O0 = [
   { id:"CMD-004", client:"Pierre Moreau",  items:[{id:9,name:"Macaron",   qty:2,price:12.00}],                                          store:"Rue du Four 12",       status:"livre",      priority:"normal", time:"07:30", total:24.00, dMethod:"retrait",  dest:"Place de la Liberte 3", driver:null,      modReq:false, note:"" },
   { id:"CMD-005", client:"Isabelle Leroy", items:[{id:7,name:"Mille-feuille",qty:1,price:5.20},{id:12,name:"Financier",qty:4,price:1.80}],store:"Rue du Four 12",      status:"attente",    priority:"normal", time:"08:45", total:12.40, dMethod:null,       dest:null,               driver:null,           modReq:false, note:"" },
   { id:"CMD-006", client:"Alain Petit",    items:[{id:11,name:"Quiche",   qty:2,price:6.80}],                                           store:"Place de la Liberte 3",status:"prete",      priority:"normal", time:"08:10", total:13.60, dMethod:"livreur",  dest:"Domicile client",  driver:"Karim Saïdi",  modReq:true,  note:"Fragile" },
+  { id:"CMD-007", client:"Hôtel Beau-Rivage",items:[{id:1,name:"Croissant",qty:30,price:2.40},{id:2,name:"Pain choc.",qty:20,price:2.80},{id:3,name:"Baguette",qty:10,price:1.50}],store:"Place de la Liberte 3",status:"attente",priority:"urgent",time:"06:30",total:143.00,dMethod:"livreur",dest:"Quai du Mont-Blanc 15",driver:"Paul Mercier",modReq:false,note:"Livraison avant 8h impératif" },
+  { id:"CMD-008", client:"Garderie Les Lutins",items:[{id:8,name:"Chausson pommes",qty:15,price:2.60},{id:12,name:"Financier",qty:20,price:1.80}],store:"Avenue des Fleurs 8",status:"prete",priority:"normal",time:"07:00",total:75.00,dMethod:"livreur",dest:"Rue des Enfants 4",driver:"Karim Saïdi",modReq:false,note:"" },
+  { id:"CMD-009", client:"Famille Rochat",items:[{id:5,name:"Tarte pommes",qty:2,price:28.00},{id:7,name:"Mille-feuille",qty:6,price:5.20}],store:"Rue du Four 12",status:"production",priority:"normal",time:"09:00",total:87.20,dMethod:"retrait",dest:"Rue du Four 12",driver:null,modReq:false,note:"Anniversaire — bougies SVP" },
+  { id:"CMD-010", client:"M. Favre",items:[{id:10,name:"Sandwich",qty:8,price:5.50},{id:11,name:"Quiche",qty:4,price:6.80}],store:"Place de la Liberte 3",status:"attente",priority:"normal",time:"09:15",total:71.20,dMethod:null,dest:null,driver:null,modReq:false,note:"Réunion d'entreprise 12h" },
 ];
 
 const C0 = [
@@ -113,9 +123,227 @@ const C0 = [
   { id:4, role:"production", from:"Production centrale",   text:"CMD-006 deja prete, impossible de modifier.",   t:"08:54", ord:"CMD-006", mod:false },
 ];
 
+// ─── ABONNEMENTS DÉMO ─────────────────────────────────────────
+const SUBS0 = [
+  { id:"ABO-001", client:"Restaurant Le Provençal", phone:"079 123 45 67",
+    items:[{id:3,name:"Baguette tradition",qty:10,price:1.50,emoji:"🥖"},{id:1,name:"Croissant au beurre",qty:20,price:2.40,emoji:"🥐"}],
+    store:"Rue du Four 12", dMethod:"livreur", dest:"Rue du Marché 5, Lausanne", driver:"Paul Mercier",
+    note:"Livrer avant 7h", frequency:"weekly", days:[1,2,3,4,5], deliveryTime:"06:30",
+    startDate:"2026-01-15", endDate:null, active:true, total:63.00,
+    lastGenerated:null, createdAt:"2026-01-15" },
+  { id:"ABO-002", client:"Hôtel Beau-Rivage", phone:"021 613 33 33",
+    items:[{id:1,name:"Croissant au beurre",qty:30,price:2.40,emoji:"🥐"},{id:2,name:"Pain au chocolat",qty:20,price:2.80,emoji:"🍫"},{id:3,name:"Baguette tradition",qty:15,price:1.50,emoji:"🥖"}],
+    store:"Place de la Liberte 3", dMethod:"livreur", dest:"Quai d'Ouchy 18, Lausanne", driver:"Karim Saïdi",
+    note:"Entrée de service, demander Michel", frequency:"daily", days:[1,2,3,4,5,6,0], deliveryTime:"05:45",
+    startDate:"2026-02-01", endDate:null, active:true, total:150.50,
+    lastGenerated:null, createdAt:"2026-02-01" },
+  { id:"ABO-003", client:"Garderie Les Lutins", phone:"079 456 78 90",
+    items:[{id:4,name:"Pain de campagne",qty:3,price:4.20,emoji:"🍞"},{id:8,name:"Chausson aux pommes",qty:15,price:2.60,emoji:"🍏"}],
+    store:"Avenue des Fleurs 8", dMethod:"retrait", dest:"Avenue des Fleurs 8", driver:null,
+    note:"Retrait lundi et jeudi à 7h30", frequency:"weekly", days:[1,4], deliveryTime:"07:30",
+    startDate:"2026-01-20", endDate:"2026-06-30", active:true, total:51.60,
+    lastGenerated:null, createdAt:"2026-01-20" },
+];
+
+// ─── FICHES RECETTES DÉMO ─────────────────────────────────────
+const RECIPES0 = [
+  { id:"REC-001", productId:1, name:"Croissant au beurre", portions:20, prepTime:40, cookTime:18, restTime:720,
+    difficulty:"avancé",
+    ingredients:[
+      {name:"Farine T55",qty:500,unit:"g",cost:0.45},{name:"Beurre AOP 82%",qty:280,unit:"g",cost:3.36},
+      {name:"Lait entier",qty:125,unit:"ml",cost:0.15},{name:"Sucre",qty:50,unit:"g",cost:0.06},
+      {name:"Sel fin",qty:10,unit:"g",cost:0.01},{name:"Levure fraîche",qty:12,unit:"g",cost:0.18},
+      {name:"Œuf (dorure)",qty:1,unit:"pcs",cost:0.30}
+    ],
+    steps:["Mélanger farine, sucre, sel et levure","Ajouter lait tiède, pétrir 10 min V2","Repos 1h à température ambiante",
+      "Étaler en rectangle, incorporer le beurre en détrempe","Tourage: 1 tour double + 2 tours simples (repos 30min entre chaque)",
+      "Abaisser à 4mm, détailler en triangles","Rouler les croissants, pointe dessous","Pousse 2h à 26°C (volume doublé)",
+      "Dorer à l'œuf battu","Cuire 18 min à 180°C (chaleur tournante)"],
+    notes:"Ne jamais dépasser 24°C pendant le tourage. Beurre et détrempe même consistance.",
+    costPerBatch:4.51 },
+  { id:"REC-002", productId:3, name:"Baguette tradition", portions:8, prepTime:20, cookTime:25, restTime:1440,
+    difficulty:"moyen",
+    ingredients:[
+      {name:"Farine T65 tradition",qty:1000,unit:"g",cost:0.90},{name:"Eau",qty:680,unit:"ml",cost:0},
+      {name:"Sel de Guérande",qty:20,unit:"g",cost:0.08},{name:"Levure fraîche",qty:5,unit:"g",cost:0.08},
+      {name:"Levain liquide",qty:200,unit:"g",cost:0.30}
+    ],
+    steps:["Autolyse: farine + eau, repos 30 min","Ajouter levain, sel, levure — pétrir 6 min V1 + 4 min V2",
+      "Pointage 1h30 en bac (2 rabats à 30 min)","Diviser en pâtons de 350g","Pré-façonner en boules, repos 20 min",
+      "Façonner les baguettes (allonger sans dégazer)","Apprêt sur couche farinée 1h à 24°C",
+      "Scarifier (5 coups de lame)","Enfourner à 250°C, coup de buée","Cuire 25 min, ouvrir le clapet à mi-cuisson"],
+    notes:"Autolyse essentielle pour le réseau glutineux. Poolish possible en remplacement du levain.",
+    costPerBatch:1.36 },
+  { id:"REC-003", productId:6, name:"Éclair chocolat", portions:12, prepTime:30, cookTime:35, restTime:60,
+    difficulty:"avancé",
+    ingredients:[
+      {name:"Eau",qty:250,unit:"ml",cost:0},{name:"Beurre",qty:100,unit:"g",cost:1.20},
+      {name:"Farine T55",qty:150,unit:"g",cost:0.14},{name:"Œufs",qty:5,unit:"pcs",cost:1.50},
+      {name:"Sel",qty:3,unit:"g",cost:0.01},{name:"Sucre",qty:5,unit:"g",cost:0.01},
+      {name:"Chocolat noir 64%",qty:200,unit:"g",cost:2.80},{name:"Crème 35%",qty:300,unit:"ml",cost:1.50},
+      {name:"Lait",qty:250,unit:"ml",cost:0.30},{name:"Jaunes d'œuf",qty:4,unit:"pcs",cost:1.20},
+      {name:"Sucre (crème)",qty:80,unit:"g",cost:0.10},{name:"Maïzena",qty:30,unit:"g",cost:0.12}
+    ],
+    steps:["PÂTE À CHOUX: Porter eau+beurre+sel+sucre à ébullition","Verser farine d'un coup, dessécher 2 min",
+      "Incorporer les œufs un par un (consistance ruban)","Dresser bâtonnets de 12cm sur plaque",
+      "Cuire 25 min à 180°C (ne pas ouvrir le four)","Laisser sécher 10 min four éteint porte entrouverte",
+      "CRÈME PÂTISSIÈRE CHOCO: Chauffer lait, verser sur jaunes+sucre+maïzena",
+      "Cuire jusqu'à épaississement, ajouter chocolat hors feu","Filmer au contact, refroidir",
+      "MONTAGE: Percer 3 trous sous chaque éclair, garnir à la poche",
+      "GLAÇAGE: Fondant + chocolat fondu, glacer le dessus"],
+    notes:"Pâte à choux: la détrempe doit se décoller de la casserole. Œufs à incorporer progressivement.",
+    costPerBatch:8.88 },
+  { id:"REC-004", productId:11, name:"Quiche lorraine", portions:6, prepTime:25, cookTime:40, restTime:30,
+    difficulty:"facile",
+    ingredients:[
+      {name:"Pâte brisée (maison)",qty:1,unit:"pcs",cost:1.20},{name:"Lardons fumés",qty:200,unit:"g",cost:2.40},
+      {name:"Œufs",qty:3,unit:"pcs",cost:0.90},{name:"Crème fraîche 35%",qty:250,unit:"ml",cost:1.25},
+      {name:"Lait",qty:100,unit:"ml",cost:0.12},{name:"Gruyère râpé",qty:80,unit:"g",cost:0.96},
+      {name:"Noix de muscade",qty:1,unit:"pincée",cost:0.02},{name:"Sel, poivre",qty:1,unit:"pincée",cost:0.02}
+    ],
+    steps:["Foncer le moule avec la pâte, piquer le fond","Cuire à blanc 10 min à 180°C avec des billes de cuisson",
+      "Faire revenir les lardons (sans matière grasse)","Mélanger œufs + crème + lait + muscade + sel/poivre",
+      "Répartir lardons sur le fond de tarte","Verser l'appareil, parsemer de gruyère",
+      "Cuire 35-40 min à 180°C (appareil pris et doré)","Laisser tiédir 10 min avant de servir"],
+    notes:"Servir tiède. Se conserve 2 jours au frais. Réchauffer 10 min à 160°C.",
+    costPerBatch:6.87 },
+];
+
+// ─── VENTES DE DÉMONSTRATION (dates dynamiques) ──────────────
+function _demoDate(daysAgo){
+  var d=new Date(); d.setDate(d.getDate()-daysAgo); d.setHours(0,0,0,0);
+  return d.toLocaleDateString("fr-CH");
+}
+function _buildSales(){
+  var T=_demoDate(0),H=_demoDate(1),J2=_demoDate(2),J3=_demoDate(3),J6=_demoDate(6),J7=_demoDate(7),J8=_demoDate(8),J14=_demoDate(14),J16=_demoDate(16),J20=_demoDate(20),J30=_demoDate(30),J35=_demoDate(35);
+  return [
+  // ── Aujourd'hui (8 ventes) ──
+  {id:"VTE-D01",time:"07:22",date:T,store:"Rue du Four 12",seller:"Léa Martin",client:"Marie Dupont",
+    items:[{id:1,name:"Croissant au beurre",qty:4,price:2.40,emoji:"🥐",tva:2.6},{id:2,name:"Pain au chocolat",qty:2,price:2.80,emoji:"🍫",tva:2.6}],
+    total:15.20,payInfo:{method:"card",change:0}},
+  {id:"VTE-D02",time:"07:45",date:T,store:"Rue du Four 12",seller:"Léa Martin",client:"Pierre Moreau",
+    items:[{id:3,name:"Baguette tradition",qty:2,price:1.50,emoji:"🥖",tva:2.6},{id:10,name:"Sandwich jambon-beurre",qty:1,price:5.50,emoji:"🥪",tva:8.1}],
+    total:8.50,payInfo:{method:"cash",change:1.50,given:10}},
+  {id:"VTE-D03",time:"08:15",date:T,store:"Place de la Liberte 3",seller:"Sophie Lacombe",client:"Restaurant Le Provençal",
+    items:[{id:1,name:"Croissant au beurre",qty:20,price:2.40,emoji:"🥐",tva:2.6},{id:3,name:"Baguette tradition",qty:10,price:1.50,emoji:"🥖",tva:2.6},{id:4,name:"Pain de campagne",qty:5,price:4.20,emoji:"🍞",tva:2.6}],
+    total:84.00,payInfo:{method:"card",change:0}},
+  {id:"VTE-D04",time:"09:30",date:T,store:"Rue du Four 12",seller:"Léa Martin",client:"Client anonyme",
+    items:[{id:6,name:"Eclair chocolat",qty:3,price:4.50,emoji:"🍮",tva:2.6},{id:7,name:"Mille-feuille",qty:2,price:5.20,emoji:"🍰",tva:2.6}],
+    total:23.90,payInfo:{method:"split",change:0.10,given:14,splitCard:10}},
+  {id:"VTE-D05",time:"10:10",date:T,store:"Avenue des Fleurs 8",seller:"Claire Dubois",client:"Mme Fontaine",
+    items:[{id:5,name:"Tarte aux pommes",qty:1,price:28.00,emoji:"🥧",tva:2.6},{id:9,name:"Macaron (6 pcs)",qty:2,price:12.00,emoji:"🎨",tva:2.6}],
+    total:52.00,payInfo:{method:"card",change:0}},
+  {id:"VTE-D06",time:"11:45",date:T,store:"Rue du Four 12",seller:"Léa Martin",client:"Jean-Luc Bernard",
+    items:[{id:11,name:"Quiche lorraine",qty:2,price:6.80,emoji:"🥗",tva:8.1},{id:10,name:"Sandwich jambon-beurre",qty:1,price:5.50,emoji:"🥪",tva:8.1}],
+    total:19.10,payInfo:{method:"cash",change:0.90,given:20}},
+  {id:"VTE-D07",time:"12:20",date:T,store:"Place de la Liberte 3",seller:"Sophie Lacombe",client:"Table 3",
+    items:[{id:11,name:"Quiche lorraine",qty:3,price:6.80,emoji:"🥗",tva:8.1},{id:10,name:"Sandwich jambon-beurre",qty:2,price:5.50,emoji:"🥪",tva:8.1}],
+    total:31.40,payInfo:{method:"card",change:0}},
+  {id:"VTE-D08",time:"13:00",date:T,store:"Rue du Four 12",seller:"Léa Martin",client:"Cadeau pour Sophie",
+    items:[{id:1,name:"Croissant au beurre",qty:6,price:2.40,emoji:"🥐",tva:2.6},{id:7,name:"Mille-feuille",qty:2,price:5.20,emoji:"🍰",tva:2.6}],
+    total:24.80,payInfo:{method:"giftcard",change:0,gcCode:"GIFT-AB12CD"}},
+  // ── Hier (3 ventes) ──
+  {id:"VTE-H01",time:"07:10",date:H,store:"Rue du Four 12",seller:"Léa Martin",client:"Marie Dupont",
+    items:[{id:1,name:"Croissant au beurre",qty:3,price:2.40,emoji:"🥐",tva:2.6},{id:3,name:"Baguette tradition",qty:1,price:1.50,emoji:"🥖",tva:2.6}],
+    total:8.70,payInfo:{method:"cash",change:1.30,given:10}},
+  {id:"VTE-H02",time:"08:30",date:H,store:"Place de la Liberte 3",seller:"Sophie Lacombe",client:"Hôtel Beau-Rivage",
+    items:[{id:1,name:"Croissant au beurre",qty:30,price:2.40,emoji:"🥐",tva:2.6},{id:2,name:"Pain au chocolat",qty:15,price:2.80,emoji:"🍫",tva:2.6}],
+    total:114.00,payInfo:{method:"card",change:0}},
+  {id:"VTE-H03",time:"12:15",date:H,store:"Avenue des Fleurs 8",seller:"Claire Dubois",client:"Garderie Les Lutins",
+    items:[{id:8,name:"Chausson aux pommes",qty:12,price:2.60,emoji:"🍏",tva:2.6},{id:12,name:"Financier amande",qty:20,price:1.80,emoji:"✨",tva:2.6}],
+    total:67.20,payInfo:{method:"card",change:0}},
+  // ── J-2 à J-3 ──
+  {id:"VTE-W01",time:"08:00",date:J2,store:"Rue du Four 12",seller:"Léa Martin",client:"Famille Rochat",
+    items:[{id:5,name:"Tarte aux pommes",qty:2,price:28.00,emoji:"🥧",tva:2.6},{id:7,name:"Mille-feuille",qty:4,price:5.20,emoji:"🍰",tva:2.6}],
+    total:76.80,payInfo:{method:"card",change:0}},
+  {id:"VTE-W02",time:"09:15",date:J3,store:"Place de la Liberte 3",seller:"Sophie Lacombe",client:"Client anonyme",
+    items:[{id:1,name:"Croissant au beurre",qty:6,price:2.40,emoji:"🥐",tva:2.6},{id:6,name:"Eclair chocolat",qty:4,price:4.50,emoji:"🍮",tva:2.6}],
+    total:32.40,payInfo:{method:"cash",change:7.60,given:40}},
+  {id:"VTE-W03",time:"11:40",date:J3,store:"Avenue des Fleurs 8",seller:"Claire Dubois",client:"M. Favre",
+    items:[{id:10,name:"Sandwich jambon-beurre",qty:3,price:5.50,emoji:"🥪",tva:8.1},{id:11,name:"Quiche lorraine",qty:1,price:6.80,emoji:"🥗",tva:8.1}],
+    total:23.30,payInfo:{method:"card",change:0}},
+  // ── Semaine précédente J-6 à J-8 ──
+  {id:"VTE-P01",time:"07:30",date:J6,store:"Rue du Four 12",seller:"Léa Martin",client:"Restaurant Le Provençal",
+    items:[{id:3,name:"Baguette tradition",qty:15,price:1.50,emoji:"🥖",tva:2.6},{id:4,name:"Pain de campagne",qty:8,price:4.20,emoji:"🍞",tva:2.6}],
+    total:56.10,payInfo:{method:"card",change:0}},
+  {id:"VTE-P02",time:"10:00",date:J7,store:"Place de la Liberte 3",seller:"Sophie Lacombe",client:"Anniversaire Müller",
+    items:[{id:5,name:"Tarte aux pommes",qty:3,price:28.00,emoji:"🥧",tva:2.6},{id:9,name:"Macaron (6 pcs)",qty:5,price:12.00,emoji:"🎨",tva:2.6}],
+    total:144.00,payInfo:{method:"card",change:0}},
+  {id:"VTE-P03",time:"08:45",date:J8,store:"Avenue des Fleurs 8",seller:"Claire Dubois",client:"Table 5",
+    items:[{id:11,name:"Quiche lorraine",qty:4,price:6.80,emoji:"🥗",tva:8.1},{id:10,name:"Sandwich jambon-beurre",qty:4,price:5.50,emoji:"🥪",tva:8.1}],
+    total:49.20,payInfo:{method:"split",change:0,given:25,splitCard:24.20}},
+  // ── J-14 à J-20 ──
+  {id:"VTE-M01",time:"07:15",date:J14,store:"Rue du Four 12",seller:"Léa Martin",client:"Pierre Moreau",
+    items:[{id:1,name:"Croissant au beurre",qty:2,price:2.40,emoji:"🥐",tva:2.6},{id:2,name:"Pain au chocolat",qty:2,price:2.80,emoji:"🍫",tva:2.6}],
+    total:10.40,payInfo:{method:"cash",change:9.60,given:20}},
+  {id:"VTE-M02",time:"14:00",date:J16,store:"Place de la Liberte 3",seller:"Sophie Lacombe",client:"Événement Fondation Rivier",
+    items:[{id:7,name:"Mille-feuille",qty:10,price:5.20,emoji:"🍰",tva:2.6},{id:6,name:"Eclair chocolat",qty:10,price:4.50,emoji:"🍮",tva:2.6},{id:12,name:"Financier amande",qty:30,price:1.80,emoji:"✨",tva:2.6}],
+    total:151.00,payInfo:{method:"card",change:0}},
+  {id:"VTE-M03",time:"09:20",date:J20,store:"Rue du Four 12",seller:"Léa Martin",client:"Mme Fontaine",
+    items:[{id:8,name:"Chausson aux pommes",qty:6,price:2.60,emoji:"🍏",tva:2.6},{id:3,name:"Baguette tradition",qty:3,price:1.50,emoji:"🥖",tva:2.6}],
+    total:20.10,payInfo:{method:"cash",change:4.90,given:25}},
+  // ── Mois précédent J-30 à J-35 ──
+  {id:"VTE-A01",time:"08:10",date:J30,store:"Avenue des Fleurs 8",seller:"Claire Dubois",client:"Restaurant Le Provençal",
+    items:[{id:3,name:"Baguette tradition",qty:20,price:1.50,emoji:"🥖",tva:2.6},{id:1,name:"Croissant au beurre",qty:15,price:2.40,emoji:"🥐",tva:2.6}],
+    total:66.00,payInfo:{method:"card",change:0}},
+  {id:"VTE-A02",time:"16:30",date:J35,store:"Rue du Four 12",seller:"Léa Martin",client:"Client anonyme",
+    items:[{id:12,name:"Financier amande",qty:5,price:1.80,emoji:"✨",tva:2.6}],
+    total:9.00,payInfo:{method:"cash",change:1.00,given:10}},
+  ].map(function(s){ return Object.assign({},s,{tvaInfo:computeTVA(s.items)}); });
+}
+var SALES0 = _buildSales();
+
+// ─── CARTES CADEAUX DE DÉMONSTRATION ──────────────────────────
+var GIFTS0 = [
+  {code:"GIFT-AB12CD",amount:50,balance:25.20,status:"active",createdAt:_demoDate(11),createdTime:"10:00",store:"Rue du Four 12",seller:"Léa Martin",email:"sophie.meyer@gmail.com",
+    history:[{date:_demoDate(11),time:"10:00",amount:0,balance:50,label:"Création"},{date:_demoDate(0),time:"13:00",amount:24.80,balance:25.20,label:"Achat VTE-D08"}]},
+  {code:"GIFT-XY34ZW",amount:100,balance:100,status:"active",createdAt:_demoDate(6),createdTime:"14:30",store:"Place de la Liberte 3",seller:"Sophie Lacombe",email:"marc.favre@bluewin.ch",
+    history:[{date:_demoDate(6),time:"14:30",amount:0,balance:100,label:"Création"}]},
+  {code:"GIFT-MM56NN",amount:30,balance:0,status:"epuise",createdAt:_demoDate(47),createdTime:"11:00",store:"Avenue des Fleurs 8",seller:"Claire Dubois",email:null,
+    history:[{date:_demoDate(47),time:"11:00",amount:0,balance:30,label:"Création"},{date:_demoDate(39),time:"09:15",amount:22.40,balance:7.60},{date:_demoDate(32),time:"16:30",amount:7.60,balance:0}]},
+  {code:"GIFT-PP78QQ",amount:75,balance:75,status:"inactive",createdAt:_demoDate(25),createdTime:"09:00",store:"Rue du Four 12",seller:"Léa Martin",email:"alice.rochat@proton.me",
+    history:[{date:_demoDate(25),time:"09:00",amount:0,balance:75,label:"Création"}]},
+];
+
 function hm() {
   const d = new Date();
   return d.getHours() + ":" + String(d.getMinutes()).padStart(2,"0");
+}
+
+// ── TVA suisse helper ──
+// Prix TTC (les prix affichés incluent la TVA)
+// TVA = prix / (100 + taux) * taux
+function computeTVA(items) {
+  var byRate = {};
+  (items||[]).forEach(function(i){
+    var rate = i.tva || 2.6;
+    var ttc  = i.price * i.qty;
+    if (!byRate[rate]) byRate[rate] = { rate:rate, ttc:0, ht:0, tva:0 };
+    byRate[rate].ttc += ttc;
+  });
+  var totalHT = 0, totalTVA = 0, totalTTC = 0;
+  var lines = Object.values(byRate).map(function(r){
+    r.tva = Math.round(r.ttc / (100 + r.rate) * r.rate * 100) / 100;
+    r.ht  = Math.round((r.ttc - r.tva) * 100) / 100;
+    totalHT  += r.ht;
+    totalTVA += r.tva;
+    totalTTC += r.ttc;
+    return r;
+  }).sort(function(a,b){ return a.rate - b.rate; });
+  return { lines:lines, totalHT:Math.round(totalHT*100)/100, totalTVA:Math.round(totalTVA*100)/100, totalTTC:Math.round(totalTTC*100)/100 };
+}
+
+// ── Cartes cadeaux helpers ──
+function generateGiftCode() {
+  var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  var code = "GC-";
+  for (var i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
+  code += "-";
+  for (var j=0;j<4;j++) code += chars[Math.floor(Math.random()*chars.length)];
+  return code;
+}
+function qrUrl(text) {
+  return "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+encodeURIComponent(text);
 }
 
 const CSS = `
@@ -324,12 +552,19 @@ export default function App() {
   const [chatOpen,    setChatOpen]    = useState(false);
   const [logoUrl,     setLogoUrl]     = useState(function(){ try{ return localStorage.getItem("bakery_logo") || null; }catch(e){ return null; } });
   const [seenCount,   setSeenCount]   = useState(0);
-  const [catalogue,   setCatalogue]   = useState(function(){ return lsGet("catalogue", PRODUCTS.map(function(p){ return Object.assign({},p,{active:true,stock:0}); })); });
-  const [sales,       setSales]       = useState(function(){ return lsGet("sales", []); });
+  const [catalogue,   setCatalogue]   = useState(function(){
+    var saved = lsGet("catalogue", PRODUCTS.map(function(p){ return Object.assign({},p,{active:true,stock:0}); }));
+    // Migration: ajouter tva si absente
+    return saved.map(function(p){ if (p.tva===undefined) p.tva = (p.category==="Traiteur"?8.1:2.6); return p; });
+  });
+  const [sales,       setSales]       = useState(function(){ return lsGet("sales", SALES0); });
   // Tables par magasin : { [store]: [{id,name,x,y,shape,seats}] }
   const [tableLayouts, setTableLayouts] = useState(function(){ return lsGet("tableLayouts", {}); });
   // Sessions de tables ouvertes : { [store_tableId]: {cart,openedAt,status} }
   const [tableSessions, setTableSessions] = useState(function(){ return lsGet("tableSessions", {}); });
+  const [giftCards,     setGiftCards]     = useState(function(){ return lsGet("giftCards", GIFTS0); });
+  const [subscriptions, setSubscriptions] = useState(function(){ return lsGet("subscriptions", SUBS0); });
+  const [recipes,       setRecipes]       = useState(function(){ return lsGet("recipes", RECIPES0); });
   // Session restaurée après mise à jour
   const [showRestored,    setShowRestored]    = useState(false);
   // PWA install prompt
@@ -371,6 +606,22 @@ export default function App() {
   useEffect(function(){ lsSet("sales", sales); }, [sales]);
   useEffect(function(){ lsSet("tableLayouts", tableLayouts); }, [tableLayouts]);
   useEffect(function(){ lsSet("tableSessions", tableSessions); }, [tableSessions]);
+  useEffect(function(){ lsSet("giftCards", giftCards); }, [giftCards]);
+  useEffect(function(){ lsSet("subscriptions", subscriptions); }, [subscriptions]);
+  useEffect(function(){ lsSet("recipes", recipes); }, [recipes]);
+
+  function addGiftCard(card) { setGiftCards(function(prev){ return [card].concat(prev); }); }
+  function useGiftCard(code, amount) {
+    setGiftCards(function(prev){
+      return prev.map(function(c){
+        if (c.code !== code) return c;
+        var newBal = Math.max(0, c.balance - amount);
+        var entry = { date: new Date().toLocaleDateString("fr-CH"), time: hm(), amount: amount, balance: newBal };
+        return Object.assign({}, c, { balance: newBal, status: newBal <= 0 ? "epuise" : "active",
+          history: (c.history||[]).concat([entry]) });
+      });
+    });
+  }
   useEffect(function(){
     try{
       if (logoUrl) localStorage.setItem("bakery_logo", logoUrl);
@@ -460,8 +711,8 @@ export default function App() {
               markRead={function(){ setSeenCount(otherMsgs); }}
               goRole={function(r){ setViewRole(r); }}
               onLogout={function(){ setCurrentUser(null); setChatOpen(false); setSeenCount(0); }}>
-        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} tenant={tenant} />}
-        {displayRole === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} />}
+        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} userName={userName} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} tenant={tenant} giftCards={giftCards} addGiftCard={addGiftCard} useGiftCard={useGiftCard} />}
+        {displayRole === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} recipes={recipes} catalogue={catalogue} />}
         {displayRole === "livreur"    && <Livreur    orders={orders} updOrder={updOrder} userStore={userStore} currentUser={currentUser} />}
         {(displayRole === "admin" || displayRole === "gerant" || (role==="admin" && !viewRole)) && (
           <Admin
@@ -469,11 +720,14 @@ export default function App() {
             logoUrl={logoUrl} setLogoUrl={setLogoUrl}
             tenant={tenant}  setTenant={setTenant}
             catalogue={catalogue} setCatalogue={setCatalogue}
-            sales={sales}
+            sales={sales} setSales={setSales}
             tableLayouts={tableLayouts} setTableLayouts={setTableLayouts}
             userStore={role==="admin"?null:userStore}
             users={users} setUsers={setUsers}
             permissions={permissions}
+            giftCards={giftCards} setGiftCards={setGiftCards}
+            subscriptions={subscriptions} setSubscriptions={setSubscriptions}
+            recipes={recipes} setRecipes={setRecipes}
           />
         )}
       </Layout>
@@ -1405,11 +1659,19 @@ function PayModal(props) {
   var onPaid   = props.onPaid;
   var onClose  = props.onClose;
   var tenant   = props.tenant;
+  var tvaData  = computeTVA(cart);
+  var giftCards  = props.giftCards  || [];
+  var useGiftCard= props.useGiftCard|| function(){};
 
-  const [method,   setMethod]   = useState("card");   // "card" | "cash" | "split"
+  const [method,   setMethod]   = useState("card");   // "card" | "cash" | "split" | "giftcard"
   const [given,    setGiven]    = useState("");        // montant donné en espèces
   const [step,     setStep]     = useState("choose");  // "choose" | "processing" | "done"
   const [splitCard,setSplitCard]= useState("");
+  const [gcCode,   setGcCode]   = useState("");
+  const [gcError,  setGcError]  = useState("");
+  const [gcFound,  setGcFound]  = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const scanRef    = useRef(null);
 
   var givenNum    = parseFloat(given)  || 0;
   var splitNum    = parseFloat(splitCard) || 0;
@@ -1419,9 +1681,53 @@ function PayModal(props) {
   var cashNeeded  = method === "split" ? total - splitNum : total;
   var cashValid   = method === "cash"  ? givenNum >= total
                   : method === "split" ? givenNum >= cashNeeded && splitNum > 0 && splitNum < total
+                  : method === "giftcard" ? (gcFound && gcFound.balance >= total)
                   : true;
 
+  function lookupGC(code) {
+    var c = code.toUpperCase().trim();
+    setGcCode(c);
+    setGcError("");
+    setGcFound(null);
+    if (c.length < 5) return;
+    var found = giftCards.find(function(g){ return g.code === c; });
+    if (!found) { setGcError("Code introuvable"); return; }
+    if (found.status === "epuise") { setGcError("Carte épuisée (solde 0)"); return; }
+    if (found.status === "inactive") { setGcError("Carte désactivée"); return; }
+    if (found.balance <= 0) { setGcError("Solde insuffisant"); return; }
+    setGcFound(found);
+    if (found.balance < total) { setGcError("Solde partiel (CHF "+found.balance.toFixed(2)+") — complétez avec un autre moyen"); }
+  }
+
+  // QR scan via BarcodeDetector
+  function startScan() {
+    if (!("BarcodeDetector" in window)) { setGcError("Scanner non supporté sur ce navigateur"); return; }
+    setScanning(true);
+    navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(function(stream){
+      if(scanRef.current) {
+        scanRef.current.srcObject = stream;
+        scanRef.current.play();
+        var detector = new BarcodeDetector({formats:["qr_code"]});
+        var interval = setInterval(function(){
+          if(!scanRef.current) { clearInterval(interval); stream.getTracks().forEach(function(t){t.stop();}); return; }
+          detector.detect(scanRef.current).then(function(codes){
+            if(codes.length>0) {
+              clearInterval(interval);
+              stream.getTracks().forEach(function(t){t.stop();});
+              setScanning(false);
+              lookupGC(codes[0].rawValue);
+            }
+          }).catch(function(){});
+        }, 300);
+      }
+    }).catch(function(){ setGcError("Accès caméra refusé"); setScanning(false); });
+  }
+
   function pay() {
+    if (method === "giftcard" && gcFound) {
+      var debitAmt = Math.min(gcFound.balance, total);
+      useGiftCard(gcFound.code, debitAmt);
+    }
     setStep("processing");
     setTimeout(function(){
       setStep("done");
@@ -1429,11 +1735,12 @@ function PayModal(props) {
         onPaid({
           method:   method,
           cashGiven: givenNum,
-          cardAmount: method === "split" ? splitNum : method === "card" ? total : 0,
+          cardAmount: method === "split" ? splitNum : method === "card" ? total : method === "giftcard" ? total : 0,
           change:   change,
+          giftCode: method === "giftcard" && gcFound ? gcFound.code : null,
         });
       }, 1200);
-    }, method === "card" || method === "split" ? 2000 : 400);
+    }, method === "card" || method === "split" || method === "giftcard" ? 2000 : 400);
   }
 
   var QUICK = [0.50,1,2,5,10,20,50,100];
@@ -1449,6 +1756,12 @@ function PayModal(props) {
             <div style={{color:"#FDF8F0",fontFamily:"'Outfit',sans-serif",fontSize:13,opacity:.6,marginBottom:2}}>Total à encaisser</div>
             <div style={{color:"#C8953A",fontFamily:"'Outfit',sans-serif",fontSize:34,fontWeight:800,letterSpacing:-1}}>
               CHF {total.toFixed(2)}
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              {tvaData.lines.map(function(l){
+                return React.createElement("span",{key:l.rate,style:{fontSize:9,color:"rgba(253,248,240,.45)"}},
+                  "TVA "+l.rate+"% : "+l.tva.toFixed(2));
+              })}
             </div>
           </div>
           {step === "choose" && (
@@ -1489,11 +1802,11 @@ function PayModal(props) {
         {step === "choose" && (
           <div style={{padding:"18px 22px"}}>
             {/* Mode selector */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:18}}>
-              {[["card","💳","Carte"],["cash","💵","Espèces"],["split","🔀","Mixte"]].map(function(m){
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:18}}>
+              {[["card","💳","Carte"],["cash","💵","Espèces"],["split","🔀","Mixte"],["giftcard","🎁","Carte cadeau"]].map(function(m){
                 var active = method === m[0];
                 return (
-                  <button key={m[0]} onClick={function(){ setMethod(m[0]); setGiven(""); setSplitCard(""); }}
+                  <button key={m[0]} onClick={function(){ setMethod(m[0]); setGiven(""); setSplitCard(""); setGcCode(""); setGcFound(null); setGcError(""); setScanning(false); }}
                     style={{padding:"12px 8px",borderRadius:12,border:"2px solid "+(active?"#C8953A":"#EDE0D0"),
                             background:active?"#FDF0D8":"#fff",cursor:"pointer",textAlign:"center",transition:"all .15s"}}>
                     <div style={{fontSize:22,marginBottom:4}}>{m[1]}</div>
@@ -1566,13 +1879,61 @@ function PayModal(props) {
               </div>
             )}
 
+            {/* Gift Card */}
+            {method === "giftcard" && (
+              <div style={{marginBottom:16}}>
+                <label style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Code carte cadeau</label>
+                <div style={{display:"flex",gap:8}}>
+                  <input type="text" value={gcCode} onChange={function(e){ lookupGC(e.target.value); }}
+                    placeholder="GC-XXXX-XXXX"
+                    style={{flex:1,padding:"12px",borderRadius:10,border:"2px solid "+(gcFound?"#10B981":gcError&&gcCode.length>=5?"#EF4444":"#EDE0D0"),
+                            fontSize:18,fontWeight:700,textAlign:"center",outline:"none",fontFamily:"'Courier New',monospace",
+                            color:"#1E0E05",background:"#F7F3EE",textTransform:"uppercase",letterSpacing:2,transition:"border-color .15s"}} />
+                  <button onClick={startScan}
+                    style={{padding:"10px 14px",borderRadius:10,border:"1px solid #EDE0D0",background:scanning?"#1E0E05":"#F7F3EE",
+                            color:scanning?"#FDF8F0":"#5C4A32",fontSize:18,cursor:"pointer",transition:"all .15s",flexShrink:0}}
+                    title="Scanner QR code">
+                    📷
+                  </button>
+                </div>
+                {scanning && (
+                  <div style={{marginTop:10,borderRadius:12,overflow:"hidden",border:"2px solid #C8953A",position:"relative"}}>
+                    <video ref={scanRef} style={{width:"100%",display:"block",maxHeight:200}} muted playsInline />
+                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <div style={{width:120,height:120,border:"3px solid #C8953A",borderRadius:14,animation:"glow 1s ease infinite alternate"}} />
+                    </div>
+                    <button onClick={function(){setScanning(false);if(scanRef.current&&scanRef.current.srcObject)scanRef.current.srcObject.getTracks().forEach(function(t){t.stop();});}}
+                      style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.6)",border:"none",borderRadius:"50%",width:28,height:28,color:"#fff",fontSize:14,cursor:"pointer"}}>✕</button>
+                  </div>
+                )}
+                {gcError && <div style={{marginTop:8,padding:"7px 12px",borderRadius:8,background:"#FEF3C7",border:"1px solid #FCD34D",fontSize:11,color:"#92400E",fontWeight:600}}>{gcError}</div>}
+                {gcFound && (
+                  <div style={{marginTop:10,background:"#D1FAE5",border:"1.5px solid #10B981",borderRadius:12,padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{fontSize:11,fontWeight:700,color:"#065F46"}}>✅ Carte valide</span>
+                      <span style={{fontFamily:"'Courier New',monospace",fontSize:12,fontWeight:700,color:"#065F46",letterSpacing:1}}>{gcFound.code}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                      <span style={{fontSize:10,color:"#065F46"}}>Solde disponible</span>
+                      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:22,fontWeight:800,color:"#065F46"}}>CHF {gcFound.balance.toFixed(2)}</span>
+                    </div>
+                    {gcFound.balance < total && (
+                      <div style={{marginTop:8,padding:"6px 10px",borderRadius:6,background:"#FEF3C7",fontSize:10,color:"#92400E",fontWeight:600}}>
+                        ⚠️ Solde insuffisant — complétez avec un autre moyen de paiement
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <button onClick={pay} disabled={!cashValid}
               style={{width:"100%",padding:"15px",borderRadius:12,border:"none",
                       background:cashValid?"linear-gradient(135deg,#C8953A,#a07228)":"#D5C4B0",
                       color:cashValid?"#1E0E05":"#fff",fontSize:16,fontWeight:800,
                       cursor:cashValid?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif",
                       transition:"all .18s",letterSpacing:.3}}>
-              {method==="card" ? "💳 Lancer le paiement carte" : method==="cash" ? "💵 Encaisser" : "🔀 Confirmer paiement mixte"}
+              {method==="card" ? "💳 Lancer le paiement carte" : method==="cash" ? "💵 Encaisser" : method==="giftcard" ? "🎁 Payer avec la carte cadeau" : "🔀 Confirmer paiement mixte"}
             </button>
           </div>
         )}
@@ -1586,7 +1947,7 @@ function ReceiptModal(props) {
   var tenant = props.tenant;
   var onClose= props.onClose;
   if (!sale) return null;
-  var methodLabel = sale.payInfo.method === "card" ? "Carte bancaire" : sale.payInfo.method === "cash" ? "Espèces" : "Paiement mixte";
+  var methodLabel = sale.payInfo.method === "card" ? "Carte bancaire" : sale.payInfo.method === "cash" ? "Espèces" : sale.payInfo.method === "giftcard" ? "Carte cadeau" : "Paiement mixte";
   return (
     <div style={{position:"fixed",inset:0,zIndex:950,background:"rgba(0,0,0,.6)",backdropFilter:"blur(4px)",
                  display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
@@ -1610,10 +1971,25 @@ function ReceiptModal(props) {
         </div>
         <div style={{padding:"12px 20px",borderBottom:"1px dashed #EDE0D0"}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-            <span style={{fontSize:13,color:"#8B7355"}}>Total</span>
+            <span style={{fontSize:13,color:"#8B7355"}}>Total TTC</span>
             <span style={{fontFamily:"'Outfit',sans-serif",fontSize:18,fontWeight:800,color:"#C8953A"}}>CHF {sale.total.toFixed(2)}</span>
           </div>
-          <div style={{fontSize:11,color:"#8B7355"}}>{methodLabel}
+          {(function(){
+            var tv = sale.tvaInfo || computeTVA(sale.items);
+            return React.createElement("div",{style:{marginTop:4}},
+              tv.lines.map(function(l){
+                return React.createElement("div",{key:l.rate,style:{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B7355",marginBottom:1}},
+                  React.createElement("span",null,"dont TVA "+l.rate+"%"),
+                  React.createElement("span",null,"CHF "+l.tva.toFixed(2))
+                );
+              }),
+              React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B7355",marginTop:2,borderTop:"1px dotted #EDE0D0",paddingTop:3}},
+                React.createElement("span",null,"Total HT"),
+                React.createElement("span",null,"CHF "+tv.totalHT.toFixed(2))
+              )
+            );
+          })()}
+          <div style={{fontSize:11,color:"#8B7355",marginTop:6}}>{methodLabel}
             {sale.payInfo.change > 0 && <span style={{color:"#065F46",fontWeight:600}}> · Rendu CHF {sale.payInfo.change.toFixed(2)}</span>}
           </div>
         </div>
@@ -2183,6 +2559,7 @@ function Vendeuse(props) {
   var updOrder  = props.updOrder;
   var sendMsg   = props.sendMsg;
   var userStore = props.userStore;
+  var userName  = props.userName  || "Inconnu";
   var catalogue = props.catalogue || PRODUCTS.map(function(p){ return Object.assign({},p,{active:true}); });
   var sales     = props.sales     || [];
   var addSale   = props.addSale   || function(){};
@@ -2191,6 +2568,9 @@ function Vendeuse(props) {
   var tableSessions   = props.tableSessions   || {};
   var setTableSessions= props.setTableSessions|| function(){};
   var tenant    = props.tenant    || "BakeryOS";
+  var giftCards   = props.giftCards   || [];
+  var addGiftCard = props.addGiftCard || function(){};
+  var useGiftCard = props.useGiftCard || function(){};
 
   var myStore    = userStore || STORES[0];
   var myTables   = tableLayouts[myStore] || [];
@@ -2212,6 +2592,10 @@ function Vendeuse(props) {
   const [showReceipt,setShowReceipt]= useState(false);
   const [showClient, setShowClient] = useState(false);
   const [paidAnim,   setPaidAnim]   = useState(false);
+  const [showGiftCard, setShowGiftCard] = useState(false);
+  const [giftAmount,   setGiftAmount]   = useState("");
+  const [giftEmail,    setGiftEmail]    = useState("");
+  const [createdGift,  setCreatedGift]  = useState(null); // carte créée à afficher
   // ── Nouveau flux tables ──
   const [activeTable,    setActiveTable]    = useState(null);  // table en cours d'édition
   const [showModeModal,  setShowModeModal]  = useState(false); // popup Sur place / Emporter / Livraison
@@ -2328,9 +2712,11 @@ function Vendeuse(props) {
       time:    hm(),
       date:    new Date().toLocaleDateString("fr-CH"),
       store:   store,
+      seller:  userName,
       client:  client || "Client anonyme",
-      items:   cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price,emoji:i.emoji}; }),
+      items:   cart.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price,emoji:i.emoji,tva:i.tva||2.6}; }),
       total:   total,
+      tvaInfo: computeTVA(cart),
       payInfo: payInfo,
     };
     addSale(sale);
@@ -2434,12 +2820,13 @@ function Vendeuse(props) {
     var items = itemsOrTicket.cart || itemsOrTicket;
     var ticketClient = itemsOrTicket.client || client || "Client";
     var ticketTotal = items.reduce(function(s,i){ return s+i.price*i.qty; },0);
+    var tv = computeTVA(items);
     var w = window.open("","_blank","width=320,height=600");
     if (!w) return;
     w.document.write(
       '<html><head><style>body{font-family:monospace;font-size:12px;padding:10px;max-width:280px;margin:0 auto}'+
       '.line{display:flex;justify-content:space-between;margin:2px 0}.sep{border-top:1px dashed #000;margin:6px 0}'+
-      '.center{text-align:center}.bold{font-weight:bold}.big{font-size:16px}</style></head><body>'+
+      '.center{text-align:center}.bold{font-weight:bold}.big{font-size:16px}.small{font-size:9px;color:#666}</style></head><body>'+
       '<div class="center bold big">'+tenant+'</div>'+
       '<div class="center" style="font-size:10px;margin-bottom:8px">'+myStore+'</div>'+
       '<div class="sep"></div>'+
@@ -2449,7 +2836,12 @@ function Vendeuse(props) {
         return '<div class="line"><span>'+i.qty+'× '+i.name+'</span><span>'+((i.price*i.qty).toFixed(2))+'</span></div>';
       }).join('')+
       '<div class="sep"></div>'+
-      '<div class="line bold big"><span>TOTAL</span><span>CHF '+ticketTotal.toFixed(2)+'</span></div>'+
+      '<div class="line bold big"><span>TOTAL TTC</span><span>CHF '+ticketTotal.toFixed(2)+'</span></div>'+
+      '<div class="sep"></div>'+
+      tv.lines.map(function(l){
+        return '<div class="line small"><span>dont TVA '+l.rate+'%</span><span>CHF '+l.tva.toFixed(2)+'</span></div>';
+      }).join('')+
+      '<div class="line small"><span>Total HT</span><span>CHF '+tv.totalHT.toFixed(2)+'</span></div>'+
       '<div class="sep"></div>'+
       '<div class="center" style="font-size:9px;margin-top:8px">Merci de votre visite !</div>'+
       '</body></html>'
@@ -2667,9 +3059,165 @@ function Vendeuse(props) {
 
       {edit && <EditModal order={edit} onSave={handleSave} onClose={function(){ setEdit(null); }}
                           onModReq={function(id){ updOrder(id,{modReq:true}); }} sendMsg={sendMsg} />}
-      {showPay && <PayModal total={total} cart={cart} tenant="BakeryOS" onPaid={onPaid} onClose={function(){ setShowPay(false); }} />}
+      {showPay && <PayModal total={total} cart={cart} tenant="BakeryOS" onPaid={onPaid} onClose={function(){ setShowPay(false); }} giftCards={giftCards} useGiftCard={useGiftCard} />}
       {showReceipt && <ReceiptModal sale={lastSale} tenant="BakeryOS" onClose={function(){ setShowReceipt(false); }} />}
       {showClient && <ClientDisplay cart={cart} total={total} tenant="BakeryOS" paid={paidAnim} onClose={function(){ setShowClient(false); }} />}
+
+      {/* ── Modal création carte cadeau ── */}
+      {showGiftCard && !createdGift && (
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,.6)",backdropFilter:"blur(4px)",
+                     display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+             onClick={function(){ setShowGiftCard(false); setGiftAmount(""); setGiftEmail(""); }}>
+          <div onClick={function(e){e.stopPropagation();}}
+            style={{background:"#fff",borderRadius:22,width:"100%",maxWidth:400,boxShadow:"0 32px 80px rgba(0,0,0,.35)",overflow:"hidden",animation:"pinIn .25s ease"}}>
+            <div style={{background:"linear-gradient(135deg,#1E0E05,#3D2B1A)",padding:"22px 24px",textAlign:"center"}}>
+              <div style={{fontSize:40,marginBottom:6}}>🎁</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:18,fontWeight:800,color:"#C8953A"}}>Nouvelle carte cadeau</div>
+              <div style={{fontSize:11,color:"rgba(253,248,240,.4)",marginTop:2}}>Montant libre · Carte virtuelle</div>
+            </div>
+            <div style={{padding:"20px 24px"}}>
+              <label style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Montant (CHF) *</label>
+              <input type="number" min="1" step="0.50" value={giftAmount} onChange={function(e){setGiftAmount(e.target.value);}}
+                placeholder="Ex: 25, 50, 100..."
+                style={{width:"100%",padding:"14px",borderRadius:12,border:"2px solid "+(parseFloat(giftAmount)>0?"#C8953A":"#EDE0D0"),
+                        fontSize:26,fontWeight:800,textAlign:"center",outline:"none",fontFamily:"'Outfit',sans-serif",
+                        color:"#1E0E05",background:"#F7F3EE",transition:"border-color .15s"}} />
+              <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap",justifyContent:"center"}}>
+                {[10,20,25,50,75,100,150,200].map(function(v){
+                  return React.createElement("button",{key:v,onClick:function(){setGiftAmount(String(v));},
+                    style:{padding:"6px 12px",borderRadius:8,border:"1px solid "+(giftAmount==String(v)?"#C8953A":"#EDE0D0"),
+                           background:giftAmount==String(v)?"#FDF0D8":"#fff",color:giftAmount==String(v)?"#92400E":"#5C4A32",
+                           fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",transition:"all .12s"}},v+" CHF");
+                })}
+              </div>
+              <div style={{marginTop:14}}>
+                <label style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:5}}>Email destinataire (optionnel)</label>
+                <input type="email" value={giftEmail} onChange={function(e){setGiftEmail(e.target.value);}}
+                  placeholder="nom@email.com"
+                  style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid #EDE0D0",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif",background:"#F7F3EE"}} />
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:18}}>
+                <button onClick={function(){setShowGiftCard(false);setGiftAmount("");setGiftEmail("");}}
+                  style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid #EDE0D0",background:"#fff",color:"#5C4A32",fontSize:13,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>Annuler</button>
+                <button disabled={!(parseFloat(giftAmount)>0)} onClick={function(){
+                    var amt = parseFloat(giftAmount)||0;
+                    if (amt <= 0) return;
+                    var code = generateGiftCode();
+                    // Vérifier unicité
+                    while(giftCards.some(function(g){return g.code===code;})) code = generateGiftCode();
+                    var card = {
+                      id: "GC-"+Date.now(),
+                      code: code,
+                      amount: amt,
+                      balance: amt,
+                      status: "active",
+                      createdAt: new Date().toLocaleDateString("fr-CH"),
+                      createdTime: hm(),
+                      store: store,
+                      seller: userName,
+                      email: giftEmail || null,
+                      history: [{date:new Date().toLocaleDateString("fr-CH"),time:hm(),amount:0,balance:amt,label:"Création"}]
+                    };
+                    addGiftCard(card);
+                    // Enregistrer comme vente
+                    addSale({
+                      id:"VTE-"+Date.now(),time:hm(),date:new Date().toLocaleDateString("fr-CH"),
+                      store:store,seller:userName,client:giftEmail||"Carte cadeau",
+                      items:[{id:0,name:"Carte cadeau "+code,qty:1,price:amt,emoji:"🎁",tva:0}],
+                      total:amt,tvaInfo:{lines:[],totalHT:amt,totalTVA:0,totalTTC:amt},
+                      payInfo:{method:"card",change:0}
+                    });
+                    setCreatedGift(card);
+                    setGiftAmount("");setGiftEmail("");
+                  }}
+                  style={{flex:2,padding:"12px",borderRadius:12,border:"none",
+                          background:parseFloat(giftAmount)>0?"linear-gradient(135deg,#C8953A,#a07228)":"#D5C4B0",
+                          color:parseFloat(giftAmount)>0?"#1E0E05":"#8B7355",fontSize:14,fontWeight:700,
+                          cursor:parseFloat(giftAmount)>0?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif"}}>
+                  🎁 Créer la carte
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Carte cadeau créée : affichage + impression/email ── */}
+      {createdGift && (
+        <div style={{position:"fixed",inset:0,zIndex:950,background:"rgba(0,0,0,.65)",backdropFilter:"blur(6px)",
+                     display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+             onClick={function(){setCreatedGift(null);setShowGiftCard(false);}}>
+          <div onClick={function(e){e.stopPropagation();}}
+            style={{background:"#fff",borderRadius:22,width:"100%",maxWidth:380,boxShadow:"0 32px 80px rgba(0,0,0,.35)",overflow:"hidden",animation:"fadeUp .3s ease"}}>
+            <div style={{background:"linear-gradient(135deg,#1E0E05 0%,#3D2B1A 100%)",padding:"28px 24px",textAlign:"center"}}>
+              <div style={{fontSize:48,marginBottom:8,animation:"pop .4s ease"}}>🎁</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:22,fontWeight:800,color:"#C8953A",marginBottom:4}}>Carte cadeau créée !</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:36,fontWeight:800,color:"#FDF8F0",letterSpacing:-1}}>CHF {createdGift.amount.toFixed(2)}</div>
+            </div>
+            <div style={{padding:"20px 24px",textAlign:"center"}}>
+              <div style={{background:"#F7F3EE",borderRadius:14,padding:"16px",marginBottom:14}}>
+                <div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>Code carte</div>
+                <div style={{fontFamily:"'Courier New',monospace",fontSize:28,fontWeight:800,color:"#1E0E05",letterSpacing:3}}>{createdGift.code}</div>
+              </div>
+              <img src={qrUrl(createdGift.code)} alt="QR" style={{width:140,height:140,borderRadius:10,border:"2px solid #EDE0D0",marginBottom:14}} />
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                <button onClick={function(){
+                    var w=window.open("","_blank","width=380,height=600");
+                    if(!w)return;
+                    w.document.write(
+                      '<html><head><style>body{font-family:sans-serif;text-align:center;padding:20px;max-width:340px;margin:0 auto}'+
+                      '.code{font-family:monospace;font-size:28px;font-weight:800;letter-spacing:3px;margin:12px 0}'+
+                      '.amt{font-size:36px;font-weight:800;color:#C8953A;margin:8px 0}'+
+                      '.sep{border-top:2px dashed #DBC9A8;margin:14px 0}.small{font-size:10px;color:#888}</style></head><body>'+
+                      '<div style="font-size:42px;margin-bottom:8px">🎁</div>'+
+                      '<div style="font-size:20px;font-weight:800">CARTE CADEAU</div>'+
+                      '<div style="font-size:13px;color:#888;margin-bottom:4px">'+tenant+'</div>'+
+                      '<div class="sep"></div>'+
+                      '<div class="amt">CHF '+createdGift.amount.toFixed(2)+'</div>'+
+                      '<div class="sep"></div>'+
+                      '<div class="code">'+createdGift.code+'</div>'+
+                      '<img src="'+qrUrl(createdGift.code)+'" width="160" height="160" style="margin:10px auto;display:block;border-radius:8px" />'+
+                      '<div class="sep"></div>'+
+                      '<div class="small">Émise le '+createdGift.createdAt+' · '+createdGift.store+'</div>'+
+                      '<div class="small" style="margin-top:12px">Présentez ce code en caisse ou scannez le QR code</div>'+
+                      '</body></html>'
+                    );
+                    w.document.close();
+                    setTimeout(function(){w.print();},500);
+                  }}
+                  style={{flex:1,padding:"11px",borderRadius:10,border:"none",background:"#1E0E05",color:"#FDF8F0",
+                          fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",
+                          display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  🖨 Imprimer
+                </button>
+                {createdGift.email && (
+                  <button onClick={function(){
+                      var subj = encodeURIComponent("Votre carte cadeau "+tenant+" — "+createdGift.code);
+                      var body = encodeURIComponent(
+                        "Bonjour,\n\nVoici votre carte cadeau "+tenant+" !\n\n"+
+                        "Montant : CHF "+createdGift.amount.toFixed(2)+"\n"+
+                        "Code : "+createdGift.code+"\n\n"+
+                        "Présentez ce code en caisse pour l'utiliser.\n\n"+
+                        "Merci et à bientôt !\n"+tenant
+                      );
+                      window.open("mailto:"+createdGift.email+"?subject="+subj+"&body="+body);
+                    }}
+                    style={{flex:1,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#C8953A,#a07228)",
+                            color:"#1E0E05",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",
+                            display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                    ✉️ Email
+                  </button>
+                )}
+              </div>
+              <button onClick={function(){setCreatedGift(null);setShowGiftCard(false);}}
+                style={{width:"100%",padding:"11px",borderRadius:10,border:"1px solid #EDE0D0",background:"#F7F3EE",
+                        color:"#5C4A32",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Barre onglets ── */}
       <div style={{display:"flex",background:"#fff",borderBottom:"1px solid #EDE0D0",padding:"0 16px",alignItems:"center",gap:0,flexShrink:0}}>
@@ -2705,6 +3253,13 @@ function Vendeuse(props) {
           );
         })}
         <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={function(){ setShowGiftCard(true); }}
+            title="Créer une carte cadeau"
+            style={{padding:"5px 11px",borderRadius:18,border:"1px solid #EDE0D0",
+                    background:"transparent",color:"#8B7355",
+                    fontSize:11,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:600,transition:"all .15s"}}>
+            🎁 Carte cadeau
+          </button>
           <button onClick={function(){ setShowClient(function(v){return !v;}); }}
             title="Affichage client (2e écran)"
             style={{padding:"5px 11px",borderRadius:18,border:"1px solid "+(showClient?"#C8953A":"#EDE0D0"),
@@ -3053,6 +3608,7 @@ function Vendeuse(props) {
                       <div style={{fontSize:32,marginBottom:6}}>{p.emoji}</div>
                       <div style={{fontSize:11,fontWeight:600,color:"#1E0E05",marginBottom:4,lineHeight:1.3}}>{p.name}</div>
                       <div style={{fontSize:14,fontWeight:800,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {p.price.toFixed(2)}</div>
+                      <div style={{fontSize:8,color:(p.tva||2.6)>3?"#7C3AED":"#8B7355",marginTop:2}}>TVA {p.tva||2.6}%</div>
                     </div>
                   );
                 })}
@@ -3141,12 +3697,27 @@ function Vendeuse(props) {
 
             {/* Total + actions */}
             <div style={{padding:"12px 16px 16px",borderTop:"1px solid rgba(255,255,255,.1)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:12}}>
-                <span style={{color:"rgba(253,248,240,.5)",fontSize:12}}>Total</span>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+                <span style={{color:"rgba(253,248,240,.5)",fontSize:12}}>Total TTC</span>
                 <span style={{fontFamily:"'Outfit',sans-serif",color:"#C8953A",fontSize:28,fontWeight:800,letterSpacing:-1}}>
                   CHF {total.toFixed(2)}
                 </span>
               </div>
+              {cart.length>0 && (function(){
+                var tv=computeTVA(cart);
+                return React.createElement("div",{style:{marginBottom:10}},
+                  tv.lines.map(function(l){
+                    return React.createElement("div",{key:l.rate,style:{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(253,248,240,.35)",marginBottom:1}},
+                      React.createElement("span",null,"TVA "+l.rate+"%"),
+                      React.createElement("span",null,"CHF "+l.tva.toFixed(2))
+                    );
+                  }),
+                  React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(253,248,240,.3)",borderTop:"1px dotted rgba(255,255,255,.1)",paddingTop:2,marginTop:2}},
+                    React.createElement("span",null,"HT"),
+                    React.createElement("span",null,"CHF "+tv.totalHT.toFixed(2))
+                  )
+                );
+              })()}
               {cartErr && (
                 <div style={{background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,
                              padding:"7px 10px",marginBottom:8,fontSize:11,color:"#FCA5A5",
@@ -3218,12 +3789,15 @@ function Production(props) {
   var updOrder= props.updOrder;
   var chat    = props.chat;
   var sendMsg = props.sendMsg;
+  var recipes = props.recipes || [];
+  var catalogue = props.catalogue || [];
 
   const [selId,   setSelId]   = useState(null);
   const [dest,    setDest]    = useState("");
   const [method,  setMethod]  = useState("magasin");
   const [filter,  setFilter]  = useState("all");
   const [editOrd, setEditOrd] = useState(null);
+  const [prodRecipe, setProdRecipe] = useState(null); // recipe to view
 
   var modReqs = chat.filter(function(m){ return m.mod; }).slice(-4);
   var queue = orders
@@ -3319,9 +3893,14 @@ function Production(props) {
                 </div>
                 <div style={{marginBottom:10}}>
                   {o.items.map(function(it,j){
-                    return <div key={j} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #F0E8DC",fontSize:11}}>
+                    var itemRecipe = recipes.find(function(r){ return r.name===it.name || (catalogue.find(function(c){return c.id===it.id;}) && r.productId===it.id); });
+                    return <div key={j} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid #F0E8DC",fontSize:11}}>
                       <span style={{color:"#3D2B1A"}}>{it.qty}x {it.name}</span>
-                      <span style={{color:"#8B7355"}}>CHF {(it.price*it.qty).toFixed(2)}</span>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        {itemRecipe && <button onClick={function(e){e.stopPropagation(); setProdRecipe(itemRecipe);}}
+                          style={{padding:"1px 5px",borderRadius:4,border:"1px solid #C4B5FD",background:"#EDE9FE",color:"#5B21B6",fontSize:8,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>📖</button>}
+                        <span style={{color:"#8B7355"}}>CHF {(it.price*it.qty).toFixed(2)}</span>
+                      </div>
                     </div>;
                   })}
                   {o.note && <div style={{marginTop:4,fontSize:10,color:"#8B7355",fontStyle:"italic"}}>📝 {o.note}</div>}
@@ -3371,6 +3950,46 @@ function Production(props) {
           </div>
         )}
       </div>
+      {/* Recipe quick-view modal */}
+      {prodRecipe && (function(){
+        var r = prodRecipe;
+        var totalTime = r.prepTime + r.cookTime;
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(30,14,5,.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+            onClick={function(){ setProdRecipe(null); }}>
+            <div style={{background:"#FDF8F0",borderRadius:18,maxWidth:500,width:"100%",maxHeight:"85vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",animation:"fadeUp .25s ease"}}
+              onClick={function(e){e.stopPropagation();}}>
+              <div style={{background:"linear-gradient(135deg,#1E0E05,#3D2B1A)",padding:"16px 20px",borderRadius:"18px 18px 0 0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:700,color:"#FDF8F0",fontFamily:"'Outfit',sans-serif"}}>📖 {r.name}</div>
+                    <div style={{fontSize:10,color:"#C8953A",marginTop:2}}>{r.portions} portions · {totalTime} min · {r.difficulty}</div>
+                  </div>
+                  <button onClick={function(){ setProdRecipe(null); }}
+                    style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:8,width:28,height:28,color:"#FDF8F0",fontSize:14,cursor:"pointer"}}>✕</button>
+                </div>
+              </div>
+              <div style={{padding:16}}>
+                <div style={{fontWeight:700,color:"#1E0E05",fontSize:12,marginBottom:6}}>🧈 Ingrédients</div>
+                {r.ingredients.map(function(ing,idx){
+                  return <div key={idx} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #F0E8DC",fontSize:11}}>
+                    <span style={{color:"#3D2B1A"}}>{ing.name}</span>
+                    <span style={{color:"#C8953A",fontWeight:600}}>{ing.qty} {ing.unit}</span>
+                  </div>;
+                })}
+                <div style={{fontWeight:700,color:"#1E0E05",fontSize:12,marginTop:12,marginBottom:6}}>📝 Étapes</div>
+                {r.steps.map(function(step,idx){
+                  return <div key={idx} style={{display:"flex",gap:8,marginBottom:4,fontSize:11}}>
+                    <span style={{width:18,height:18,borderRadius:9,background:"#1E0E05",color:"#C8953A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,flexShrink:0}}>{idx+1}</span>
+                    <span style={{color:"#3D2B1A",lineHeight:1.4}}>{step}</span>
+                  </div>;
+                })}
+                {r.notes && <div style={{background:"#FEF3C7",borderRadius:8,padding:"8px 10px",marginTop:10,fontSize:10,color:"#92400E"}}>💡 {r.notes}</div>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -3692,6 +4311,7 @@ function Admin(props) {
   var logoUrl    = props.logoUrl;
   var setLogoUrl = props.setLogoUrl;
   var setTenant  = props.setTenant   || function(){};
+  var tenant     = props.tenant      || "BakeryOS";
   var userStore  = props.userStore;  // null = superadmin, string = gérant
   var addOrder   = props.addOrder;
   var users       = props.users        || [];
@@ -3701,6 +4321,21 @@ function Admin(props) {
   var permissions = props.permissions  || defaultPerms(userStore ? "gerant" : "admin");
   var catalogue   = props.catalogue   || [];
   var sales       = props.sales       || [];
+  var setSales    = props.setSales    || function(){};
+  var giftCards   = props.giftCards   || [];
+  var setGiftCards= props.setGiftCards|| function(){};
+  var subscriptions  = props.subscriptions  || [];
+  var setSubscriptions = props.setSubscriptions || function(){};
+  var recipes        = props.recipes        || [];
+  var setRecipes     = props.setRecipes     || function(){};
+
+  function loadDemoData(){
+    var ds = _buildSales();
+    setSales(ds);
+    setGiftCards(GIFTS0.map(function(g){ return Object.assign({},g); }));
+    setSavedMsg("✅ "+ds.length+" ventes + "+GIFTS0.length+" cartes cadeaux démo chargées");
+    setTimeout(function(){ setSavedMsg(""); },3000);
+  }
   var isGerant    = !!userStore;
   var allowedTabs = permissions.adminTabs || [];
   var canCreateOrder  = permissions.features && permissions.features.indexOf("create_order") !== -1;
@@ -3709,6 +4344,8 @@ function Admin(props) {
   var canEditLogo     = permissions.features && permissions.features.indexOf("edit_logo") !== -1;
   var canManageStaff  = permissions.features && permissions.features.indexOf("manage_staff") !== -1;
   var canExportData   = permissions.features && permissions.features.indexOf("export_data") !== -1;
+  var canManageSubs   = permissions.features && permissions.features.indexOf("manage_subscriptions") !== -1;
+  var canManageRecipes= permissions.features && permissions.features.indexOf("manage_recipes") !== -1;
 
   const [adminTab,   setAdminTab]   = useState("dashboard");
   const [selO,       setSelO]       = useState(null);
@@ -3724,7 +4361,74 @@ function Admin(props) {
   const [editUser,    setEditUser]    = useState(null);  // user en édition
   const [showAddUser, setShowAddUser] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id user à supprimer
+  const [expandedTicket, setExpandedTicket] = useState(null); // ticket déplié en supervision
   const [newUser, setNewUser] = useState({login:"",password:"",nom:"",role:"vendeuse",store:"",actif:true,permissions:defaultPerms("vendeuse")});
+
+  // Abonnements
+  const [editSub, setEditSub]     = useState(null);   // subscription en édition
+  const [showAddSub, setShowAddSub] = useState(false);
+  const [confirmDeleteSub, setConfirmDeleteSub] = useState(null);
+  const [subFormData, setSubFormData] = useState(null);   // form data in progress
+  const [subFormSearch, setSubFormSearch] = useState("");  // product search in form
+  var FREQ_OPTS = [{id:"daily",label:"Quotidien"},{id:"weekly",label:"Hebdomadaire"},{id:"monthly",label:"Mensuel"}];
+  var DAY_NAMES = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+  var emptySub = {client:"",phone:"",items:[],store:STORES[0],dMethod:"livreur",dest:"",driver:"Non assigné",note:"",frequency:"weekly",days:[1,2,3,4,5],deliveryTime:"07:00",startDate:new Date().toISOString().slice(0,10),endDate:"",active:true};
+  var DIFF_OPTS = [{id:"facile",label:"Facile",color:"#10B981"},{id:"moyen",label:"Moyen",color:"#F59E0B"},{id:"avancé",label:"Avancé",color:"#EF4444"}];
+  const [viewRecipe, setViewRecipe] = useState(null);    // recipe to view/edit
+  const [editRecipe, setEditRecipe] = useState(null);    // recipe being edited (form data)
+  const [reportPeriod, setReportPeriod] = useState("mois");
+  const [reportCustomFrom, setReportCustomFrom] = useState("");
+  const [reportCustomTo, setReportCustomTo] = useState("");
+
+  // Helpers abonnements
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function todayDow(){ return new Date().getDay(); } // 0=dim
+  function isDueToday(sub){
+    if (!sub.active) return false;
+    var today = todayStr();
+    if (sub.startDate && today < sub.startDate) return false;
+    if (sub.endDate && today > sub.endDate) return false;
+    if (sub.lastGenerated === today) return false;
+    var dow = todayDow();
+    if (sub.frequency === "daily") return sub.days.indexOf(dow) !== -1;
+    if (sub.frequency === "weekly") return sub.days.indexOf(dow) !== -1;
+    if (sub.frequency === "monthly") {
+      var dom = new Date().getDate();
+      return sub.days.indexOf(dom) !== -1;
+    }
+    return false;
+  }
+  function generateSubOrders(subsToGen){
+    var generated = [];
+    var ts = Date.now();
+    subsToGen.forEach(function(sub, idx){
+      var cmdId = "CMD-ABO-" + (ts + idx);
+      var cmd = {
+        id: cmdId, client: sub.client, store: sub.store, note: sub.note ? "🔄 " + sub.note : "🔄 Commande récurrente",
+        status: "attente", priority: "normal", modReq: false,
+        items: sub.items.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price}; }),
+        time: sub.deliveryTime || hm(), total: sub.total,
+        dMethod: sub.dMethod === "livreur" ? "livreur" : sub.dMethod === "retrait" ? "retrait" : null,
+        dest: sub.dest || null, driver: sub.driver && sub.driver !== "Non assigné" ? sub.driver : null,
+        source: "abo", aboId: sub.id,
+      };
+      addOrder(cmd);
+      generated.push({subId: sub.id, cmdId: cmdId});
+    });
+    // Mark as generated today
+    setSubscriptions(function(prev){
+      return prev.map(function(s){
+        var match = generated.find(function(g){ return g.subId === s.id; });
+        return match ? Object.assign({}, s, {lastGenerated: todayStr()}) : s;
+      });
+    });
+    return generated;
+  }
+
+  // Subscriptions due today
+  var subsDueToday = subscriptions.filter(isDueToday);
+  var subsFilteredByStore = storeFilter === "all" ? subscriptions : subscriptions.filter(function(s){ return s.store === storeFilter; });
+
   const ROLE_OPTS = [
     {id:"admin",      label:"Admin",        icon:"📊"},
     {id:"gerant",     label:"Gérant(e)",    icon:"🏪"},
@@ -3758,7 +4462,7 @@ function Admin(props) {
   var sales        = props.sales        || [];
   const [editProd,  setEditProd]  = useState(null);
   const [showNew,   setShowNew]   = useState(false);
-  const [newP, setNewP] = useState({name:"",price:"",category:"Viennoiseries",emoji:"🍞",stock:""});
+  const [newP, setNewP] = useState({name:"",price:"",category:"Viennoiseries",emoji:"🍞",stock:"",tva:"2.6"});
   const [savedMsg, setSavedMsg] = useState("");
   const [analyseProd, setAnalyseProd] = useState(null);
 
@@ -3912,8 +4616,8 @@ function Admin(props) {
   function addNew() {
     if (!newP.name || !newP.price) return;
     var maxId = catalogue.reduce(function(m,p){ return Math.max(m,p.id); }, 0);
-    setCatalogue(function(prev){ return prev.concat([{id:maxId+1,name:newP.name,price:parseFloat(newP.price)||0,category:newP.category,emoji:newP.emoji,stock:parseInt(newP.stock)||0,active:true}]); });
-    setNewP({name:"",price:"",category:"Viennoiseries",emoji:"🍞",stock:""});
+    setCatalogue(function(prev){ return prev.concat([{id:maxId+1,name:newP.name,price:parseFloat(newP.price)||0,category:newP.category,emoji:newP.emoji,stock:parseInt(newP.stock)||0,tva:parseFloat(newP.tva)||2.6,active:true}]); });
+    setNewP({name:"",price:"",category:"Viennoiseries",emoji:"🍞",stock:"",tva:"2.6"});
     setShowNew(false);
     setSavedMsg("✅ Produit ajoute"); setTimeout(function(){ setSavedMsg(""); }, 2000);
   }
@@ -3965,7 +4669,7 @@ function Admin(props) {
             <div style={{color:"#8B7355",fontSize:11}}>{new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
-            {[["dashboard","📊 Vue générale"],["commandes","📋 Commandes"],["catalogue","📦 Catalogue"],["gestion","⚙️ Gestion"],["utilisateurs","👥 Utilisateurs"],["supervision","📈 Supervision"]]
+            {[["dashboard","📊 Vue générale"],["commandes","📋 Commandes"],["catalogue","📦 Catalogue"],["planning","🏭 Planning"],["gestion","⚙️ Gestion"],["utilisateurs","👥 Utilisateurs"],["supervision","📈 Supervision"],["cartes","🎁 Cartes"],["abonnements","🔄 Abonnements"],["reporting","📊 Rapport"]]
             .filter(function(item){ return allowedTabs.indexOf(item[0]) !== -1; })
             .map(function(item){
               return (
@@ -4218,6 +4922,21 @@ function Admin(props) {
             </div>
             {urgN>0 && <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>🚨</span><span style={{color:"#92400E",fontSize:12,fontWeight:600}}>{urgN} commande(s) urgente(s)</span></div>}
             {modN>0 && <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>🔔</span><span style={{color:"#DC2626",fontSize:12,fontWeight:600}}>{modN} demande(s) de modification</span></div>}
+            {subsDueToday.length>0 && (
+              <div style={{background:"#EDE9FE",border:"1px solid #C4B5FD",borderRadius:10,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8,justifyContent:"space-between"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span>🔄</span>
+                  <span style={{color:"#5B21B6",fontSize:12,fontWeight:600}}>{subsDueToday.length} abonnement(s) à générer aujourd'hui</span>
+                </div>
+                <button onClick={function(){
+                  var gen = generateSubOrders(subsDueToday);
+                  setSavedMsg("✅ "+gen.length+" commande(s) générée(s)"); setTimeout(function(){ setSavedMsg(""); },3000);
+                }}
+                  style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#7C3AED",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                  Générer
+                </button>
+              </div>
+            )}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
               <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
                 <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>📊 Revenue par magasin</div>
@@ -4398,6 +5117,14 @@ function Admin(props) {
                       placeholder="0"
                       style={{width:"100%",padding:"7px 9px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif"}} />
                   </div>
+                  <div>
+                    <label style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.9,display:"block",marginBottom:3}}>TVA %</label>
+                    <select value={newP.tva} onChange={function(e){ setNewP(function(p){ return Object.assign({},p,{tva:e.target.value}); }); }}
+                      style={{width:"100%",padding:"7px 9px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                      <option value="2.6">2.6% — Alimentaire</option>
+                      <option value="8.1">8.1% — Restauration</option>
+                    </select>
+                  </div>
                 </div>
                 <div style={{marginBottom:12}}>
                   <label style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.9,display:"block",marginBottom:5}}>Emoji</label>
@@ -4428,7 +5155,7 @@ function Admin(props) {
               <table style={{width:"100%",borderCollapse:"collapse"}}>
                 <thead>
                   <tr style={{background:"#F7F3EE"}}>
-                    {["","Article","Categorie","Px vente",...(canViewCost?["Px revient","Marge"]:[]),"Stock","Statut",""].map(function(h){
+                    {["","Article","Categorie","Px vente",...(canViewCost?["Px revient","Marge"]:[]),"TVA","Stock","Statut",""].map(function(h){
                       return <th key={h} style={{padding:"8px 10px",textAlign:"left",fontSize:9,color:"#8B7355",fontWeight:600,textTransform:"uppercase",letterSpacing:.9,whiteSpace:"nowrap"}}>{h}</th>;
                     })}
                   </tr>
@@ -4503,6 +5230,21 @@ function Admin(props) {
                             </div>
                           </div>
                         </td>}
+                        {/* TVA */}
+                        <td style={{padding:"9px 10px"}}>
+                          {isEdit ? (
+                            <select value={editProd.tva||2.6} onChange={function(e){ setEditProd(function(ep){ return Object.assign({},ep,{tva:parseFloat(e.target.value)}); }); }}
+                              style={{width:72,padding:"4px 4px",borderRadius:6,border:"1px solid #C8953A",fontSize:10,outline:"none",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                              <option value={2.6}>2.6%</option>
+                              <option value={8.1}>8.1%</option>
+                            </select>
+                          ) : (
+                            <span style={{fontSize:10,fontWeight:600,color:(p.tva||2.6)>3?"#7C3AED":"#065F46",
+                                          background:(p.tva||2.6)>3?"#F3E8FF":"#D1FAE5",padding:"2px 7px",borderRadius:8}}>
+                              {(p.tva||2.6)}%
+                            </span>
+                          )}
+                        </td>
                         {/* Stock */}
                         <td style={{padding:"9px 10px"}}>
                           {isEdit ? (
@@ -4541,6 +5283,22 @@ function Admin(props) {
                                 style={{padding:"5px 8px",borderRadius:7,border:"1px solid #DBEAFE",background:"#EFF6FF",color:"#1E40AF",fontSize:12,cursor:"pointer",transition:"all .12s"}}
                                 onMouseOver={function(e){ e.currentTarget.style.background="#DBEAFE"; }}
                                 onMouseOut={function(e){ e.currentTarget.style.background="#EFF6FF"; }}>📈</button>
+                              {(function(){
+                                var rec = recipes.find(function(r){ return r.productId===p.id; });
+                                return rec ? (
+                                  <button onClick={function(){ setViewRecipe(rec); }}
+                                    title="Voir la recette"
+                                    style={{padding:"5px 8px",borderRadius:7,border:"1px solid #C4B5FD",background:"#EDE9FE",color:"#5B21B6",fontSize:12,cursor:"pointer",transition:"all .12s"}}
+                                    onMouseOver={function(e){ e.currentTarget.style.background="#DDD6FE"; }}
+                                    onMouseOut={function(e){ e.currentTarget.style.background="#EDE9FE"; }}>📖</button>
+                                ) : canManageRecipes ? (
+                                  <button onClick={function(){ setEditRecipe({id:"REC-"+Date.now(),productId:p.id,name:p.name,portions:10,prepTime:0,cookTime:0,restTime:0,difficulty:"moyen",ingredients:[],steps:[],notes:"",costPerBatch:0}); }}
+                                    title="Créer une fiche recette"
+                                    style={{padding:"5px 8px",borderRadius:7,border:"1px dashed #D5C4B0",background:"transparent",color:"#8B7355",fontSize:12,cursor:"pointer",transition:"all .12s"}}
+                                    onMouseOver={function(e){ e.currentTarget.style.background="#F7F3EE"; }}
+                                    onMouseOut={function(e){ e.currentTarget.style.background="transparent"; }}>📖</button>
+                                ) : null;
+                              })()}
                             </div>
                           )}
                         </td>
@@ -5376,6 +6134,29 @@ function Admin(props) {
           var clientRanking = Object.keys(byClient).map(function(k){ return {name:k,ca:byClient[k].ca,tx:byClient[k].tx}; })
             .sort(function(a,b){ return b.ca-a.ca; });
 
+          // ── Par vendeuse ──
+          var bySeller = {};
+          salesToday.forEach(function(s){
+            var key = s.seller || "Inconnu";
+            if(!bySeller[key]) bySeller[key]={name:key,ca:0,tx:0,items:0,stores:{}};
+            bySeller[key].ca+=s.total;
+            bySeller[key].tx++;
+            bySeller[key].items+=s.items.reduce(function(a,i){return a+i.qty;},0);
+            bySeller[key].stores[s.store]=true;
+          });
+          var sellerRanking = Object.values(bySeller).sort(function(a,b){ return b.ca-a.ca; });
+          var maxSellerCA = sellerRanking.length>0 ? sellerRanking[0].ca : 1;
+
+          // ── Par vendeuse (toutes périodes) ──
+          var bySellerAll = {};
+          filteredSales.forEach(function(s){
+            var key = s.seller || "Inconnu";
+            if(!bySellerAll[key]) bySellerAll[key]={name:key,ca:0,tx:0};
+            bySellerAll[key].ca+=s.total;
+            bySellerAll[key].tx++;
+          });
+          var sellerRankingAll = Object.values(bySellerAll).sort(function(a,b){ return b.ca-a.ca; });
+
           // ── Top produits ──
           var prodMap = {};
           salesToday.forEach(function(s){
@@ -5409,6 +6190,18 @@ function Admin(props) {
 
           return (
             <div>
+              {allSales.length===0 && (
+                <div style={{background:"#FEF3C7",borderRadius:12,padding:"14px 18px",marginBottom:14,border:"1.5px solid #F59E0B",display:"flex",alignItems:"center",gap:12}}>
+                  <span style={{fontSize:20}}>📊</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#92400E"}}>Aucune vente — chargez les données démo</div>
+                  </div>
+                  <button onClick={loadDemoData}
+                    style={{padding:"7px 16px",borderRadius:8,border:"none",background:"#1E0E05",color:"#C8953A",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    🔄 Charger démo
+                  </button>
+                </div>
+              )}
               {/* ── KPIs globaux ── */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:20}}>
                 {[
@@ -5551,6 +6344,75 @@ function Admin(props) {
                 )}
               </div>
 
+              {/* ── Performance par vendeuse ── */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+                <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>🛒 Performance vendeuses (jour)</h4>
+                  {sellerRanking.length===0 ? (
+                    <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune vente aujourd'hui</div>
+                  ) : sellerRanking.map(function(v,idx){
+                    var pct = v.ca/maxSellerCA*100;
+                    var storeList = Object.keys(v.stores).map(function(s){ return s.split(" ").slice(0,2).join(" "); }).join(", ");
+                    return (
+                      <div key={v.name} style={{marginBottom:12,padding:"8px 10px",borderRadius:10,
+                                                 background:idx===0?"linear-gradient(135deg,#FDF8F0,#FDF0D8)":"transparent",
+                                                 border:idx===0?"1.5px solid #C8953A":"1px solid transparent"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{width:28,height:28,borderRadius:"50%",background:idx===0?"#C8953A":"#F7F3EE",
+                                         display:"flex",alignItems:"center",justifyContent:"center",
+                                         fontSize:11,fontWeight:700,color:idx===0?"#fff":"#5C4A32"}}>{idx+1}</div>
+                            <div>
+                              <div style={{fontSize:12,fontWeight:700,color:"#1E0E05"}}>{v.name}</div>
+                              <div style={{fontSize:9,color:"#8B7355"}}>{storeList}</div>
+                            </div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:13,fontWeight:800,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {v.ca.toFixed(2)}</div>
+                            <div style={{fontSize:9,color:"#8B7355"}}>{v.tx} ticket{v.tx>1?"s":""} · {v.items} art.</div>
+                          </div>
+                        </div>
+                        <div style={{height:6,background:"#F7F3EE",borderRadius:3,overflow:"hidden"}}>
+                          <div style={{width:pct+"%",height:"100%",background:idx===0?"linear-gradient(90deg,#C8953A,#a07228)":"#DBC9A8",
+                                       borderRadius:3,transition:"width .4s ease"}} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>📊 Historique vendeuses (total)</h4>
+                  {sellerRankingAll.length===0 ? (
+                    <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune donnée</div>
+                  ) : (
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                      <thead>
+                        <tr style={{background:"#F7F3EE"}}>
+                          <th style={{padding:"7px 6px",textAlign:"left",color:"#5C4A32",fontWeight:700,fontSize:10}}>Vendeuse</th>
+                          <th style={{padding:"7px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>Tickets</th>
+                          <th style={{padding:"7px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>CA Total</th>
+                          <th style={{padding:"7px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>Moy/ticket</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sellerRankingAll.map(function(v,idx){
+                          var avg = v.tx>0 ? v.ca/v.tx : 0;
+                          return (
+                            <tr key={v.name} className="tr" style={{borderBottom:"1px solid #F7F3EE"}}>
+                              <td style={{padding:"7px 6px",fontWeight:600,color:"#1E0E05"}}>{v.name}</td>
+                              <td style={{padding:"7px 6px",textAlign:"right",color:"#5C4A32"}}>{v.tx}</td>
+                              <td style={{padding:"7px 6px",textAlign:"right",fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {v.ca.toFixed(2)}</td>
+                              <td style={{padding:"7px 6px",textAlign:"right",color:"#8B7355"}}>CHF {avg.toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
               {/* ── Clients / Tickets ranking ── */}
               <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0",marginBottom:20}}>
                 <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:"0 0 12px"}}>👤 Clients / Tickets du jour</h4>
@@ -5580,9 +6442,9 @@ function Admin(props) {
                   </h4>
                   {canExportData && filteredSales.length>0 && (
                     <button onClick={function(){
-                      var csv = "ID;Date;Heure;Magasin;Client;Articles;Total;Paiement;Rendu\n";
+                      var csv = "ID;Date;Heure;Magasin;Vendeuse;Client;Articles;Total;Paiement;Rendu\n";
                       filteredSales.forEach(function(s){
-                        csv += [s.id,s.date,s.time,s.store,s.client,
+                        csv += [s.id,s.date,s.time,s.store,s.seller||"",s.client,
                           s.items.map(function(i){return i.qty+"x "+i.name;}).join(" + "),
                           s.total.toFixed(2),s.payInfo.method,
                           (s.payInfo.change||0).toFixed(2)].join(";")+"\n";
@@ -5604,7 +6466,7 @@ function Admin(props) {
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                     <thead>
                       <tr style={{background:"#F7F3EE",position:"sticky",top:0}}>
-                        {["ID","Heure","Magasin","Client","Articles","Total","Paiement"].map(function(h){
+                        {["ID","Heure","Magasin","Vendeuse","Client","Articles","Total","Paiement"].map(function(h){
                           return <th key={h} style={{padding:"8px 6px",textAlign:"left",color:"#5C4A32",fontWeight:700,fontSize:10,
                                                      borderBottom:"1.5px solid #EDE0D0",whiteSpace:"nowrap"}}>{h}</th>;
                         })}
@@ -5612,33 +6474,103 @@ function Admin(props) {
                     </thead>
                     <tbody>
                       {filteredSales.length===0 ? (
-                        <tr><td colSpan={7} style={{padding:"24px",textAlign:"center",color:"#8B7355"}}>Aucune vente enregistrée</td></tr>
+                        <tr><td colSpan={8} style={{padding:"24px",textAlign:"center",color:"#8B7355"}}>Aucune vente enregistrée</td></tr>
                       ) : filteredSales.map(function(s){
                         var mIcon = s.payInfo.method==="card"?"💳":s.payInfo.method==="cash"?"💵":"🔀";
                         var isAnomaly = s.total===0 || s.total>500;
-                        return (
-                          <tr key={s.id} className="tr" style={{borderBottom:"1px solid #F7F3EE",
-                                                                background:isAnomaly?"#FEF3C7":"transparent"}}>
-                            <td style={{padding:"7px 6px",fontWeight:600,color:"#1E0E05",whiteSpace:"nowrap"}}>{s.id}</td>
-                            <td style={{padding:"7px 6px",color:"#5C4A32"}}>{s.date} {s.time}</td>
-                            <td style={{padding:"7px 6px",color:"#5C4A32",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                              {s.store ? s.store.split(" ").slice(0,3).join(" ") : "—"}
-                            </td>
-                            <td style={{padding:"7px 6px",color:"#1E0E05",fontWeight:500}}>{s.client}</td>
-                            <td style={{padding:"7px 6px",color:"#8B7355",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                              {s.items.map(function(i){ return i.qty+"× "+i.name; }).join(", ")}
-                            </td>
-                            <td style={{padding:"7px 6px",fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap"}}>
-                              CHF {s.total.toFixed(2)}
-                            </td>
-                            <td style={{padding:"7px 6px"}}>
-                              <span style={{display:"inline-flex",alignItems:"center",gap:3}}>
-                                {mIcon}
-                                <span style={{fontSize:9,color:"#5C4A32"}}>{s.payInfo.method}</span>
-                                {s.payInfo.change>0 && <span style={{fontSize:8,color:"#8B7355"}}>(rendu {s.payInfo.change.toFixed(2)})</span>}
-                              </span>
-                            </td>
-                          </tr>
+                        var isOpen = expandedTicket===s.id;
+                        return React.createElement(React.Fragment, {key:s.id},
+                          React.createElement("tr", {className:"tr",
+                            onClick:function(){ setExpandedTicket(isOpen?null:s.id); },
+                            style:{borderBottom:isOpen?"none":"1px solid #F7F3EE",
+                                   background:isOpen?"#FDF8F0":isAnomaly?"#FEF3C7":"transparent",
+                                   cursor:"pointer",transition:"background .15s"}},
+                            React.createElement("td",{style:{padding:"7px 6px",fontWeight:600,color:"#1E0E05",whiteSpace:"nowrap"}},
+                              (isOpen?"▼ ":"▶ ")+s.id),
+                            React.createElement("td",{style:{padding:"7px 6px",color:"#5C4A32"}},s.date+" "+s.time),
+                            React.createElement("td",{style:{padding:"7px 6px",color:"#5C4A32",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},
+                              s.store?s.store.split(" ").slice(0,3).join(" "):"—"),
+                            React.createElement("td",{style:{padding:"7px 6px",color:"#5C4A32",fontWeight:500,whiteSpace:"nowrap"}},s.seller||"—"),
+                            React.createElement("td",{style:{padding:"7px 6px",color:"#1E0E05",fontWeight:500}},s.client),
+                            React.createElement("td",{style:{padding:"7px 6px",color:"#8B7355",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},
+                              s.items.map(function(i){return i.qty+"× "+i.name;}).join(", ")),
+                            React.createElement("td",{style:{padding:"7px 6px",fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap"}},
+                              "CHF "+s.total.toFixed(2)),
+                            React.createElement("td",{style:{padding:"7px 6px"}},
+                              React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:3}},
+                                mIcon," ",
+                                React.createElement("span",{style:{fontSize:9,color:"#5C4A32"}},s.payInfo.method),
+                                s.payInfo.change>0 && React.createElement("span",{style:{fontSize:8,color:"#8B7355"}}," (rendu "+s.payInfo.change.toFixed(2)+")")
+                              ))
+                          ),
+                          /* ── Ticket de caisse déplié ── */
+                          isOpen && React.createElement("tr", {style:{background:"#FDF8F0",borderBottom:"2px solid #EDE0D0"}},
+                            React.createElement("td", {colSpan:8, style:{padding:"0 6px 12px"}},
+                              React.createElement("div", {style:{
+                                maxWidth:320, margin:"8px auto", background:"#fff", borderRadius:12, padding:"20px 24px",
+                                boxShadow:"0 4px 20px rgba(0,0,0,.08)", border:"1.5px dashed #EDE0D0",
+                                fontFamily:"'Courier New',monospace", fontSize:12, color:"#1E0E05"
+                              }},
+                                /* En-tête ticket */
+                                React.createElement("div",{style:{textAlign:"center",marginBottom:12}},
+                                  React.createElement("div",{style:{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:800,color:"#1E0E05",letterSpacing:.5}},
+                                    (tenant||"BakeryOS").toUpperCase()),
+                                  React.createElement("div",{style:{fontSize:10,color:"#8B7355",marginTop:2}},s.store||""),
+                                  React.createElement("div",{style:{borderBottom:"1px dashed #DBC9A8",margin:"8px 0"}}),
+                                  React.createElement("div",{style:{fontSize:10,color:"#5C4A32"}},s.date+" · "+s.time),
+                                  React.createElement("div",{style:{fontSize:10,color:"#5C4A32"}},"Ticket: "+s.id)
+                                ),
+                                /* Client / Vendeuse */
+                                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,color:"#5C4A32",marginBottom:8}},
+                                  React.createElement("span",null,"Client: "+(s.client||"—")),
+                                  React.createElement("span",null,"Caisse: "+(s.seller||"—"))
+                                ),
+                                React.createElement("div",{style:{borderBottom:"1px dashed #DBC9A8",margin:"6px 0"}}),
+                                /* Articles */
+                                s.items.map(function(item,idx){
+                                  var lineTotal = item.qty * item.price;
+                                  return React.createElement("div",{key:idx,style:{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:11}},
+                                    React.createElement("span",{style:{flex:1}},
+                                      (item.emoji||"")+" "+item.qty+"× "+item.name),
+                                    React.createElement("span",{style:{fontWeight:600,whiteSpace:"nowrap",marginLeft:8}},
+                                      "CHF "+lineTotal.toFixed(2))
+                                  );
+                                }),
+                                React.createElement("div",{style:{borderBottom:"2px solid #1E0E05",margin:"8px 0"}}),
+                                /* Total */
+                                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800}},
+                                  React.createElement("span",null,"TOTAL TTC"),
+                                  React.createElement("span",{style:{color:"#C8953A"}},"CHF "+s.total.toFixed(2))
+                                ),
+                                /* TVA */
+                                (function(){
+                                  var tv = s.tvaInfo || computeTVA(s.items);
+                                  return React.createElement("div",{style:{margin:"6px 0"}},
+                                    tv.lines.map(function(l){
+                                      return React.createElement("div",{key:l.rate,style:{display:"flex",justifyContent:"space-between",fontSize:9,color:"#8B7355",marginBottom:1}},
+                                        React.createElement("span",null,"dont TVA "+l.rate+"%"),
+                                        React.createElement("span",null,"CHF "+l.tva.toFixed(2))
+                                      );
+                                    }),
+                                    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:9,color:"#8B7355",borderTop:"1px dotted #DBC9A8",paddingTop:2,marginTop:2}},
+                                      React.createElement("span",null,"Total HT"),
+                                      React.createElement("span",null,"CHF "+tv.totalHT.toFixed(2))
+                                    )
+                                  );
+                                })(),
+                                /* Paiement */
+                                React.createElement("div",{style:{borderBottom:"1px dashed #DBC9A8",margin:"8px 0"}}),
+                                React.createElement("div",{style:{fontSize:10,color:"#5C4A32",textAlign:"center"}},
+                                  "Payé par "+s.payInfo.method.toUpperCase()+
+                                  (s.payInfo.given ? " · Donné: CHF "+s.payInfo.given.toFixed(2) : "")+
+                                  (s.payInfo.change>0 ? " · Rendu: CHF "+s.payInfo.change.toFixed(2) : "")
+                                ),
+                                /* Pied */
+                                React.createElement("div",{style:{textAlign:"center",marginTop:12,fontSize:10,color:"#8B7355",fontFamily:"'Outfit',sans-serif"}},
+                                  "Merci de votre visite ! 🥐")
+                              )
+                            )
+                          )
                         );
                       })}
                     </tbody>
@@ -5648,6 +6580,1427 @@ function Admin(props) {
             </div>
           );
         })()} 
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* ── ONGLET CARTES CADEAUX ──────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════ */}
+        {adminTab==="cartes" && (function(){
+          var cards = giftCards || [];
+          var filtered = storeFilter==="all" ? cards : cards.filter(function(c){ return c.store===storeFilter; });
+          var activeCards  = filtered.filter(function(c){ return c.status==="active"; });
+          var usedCards    = filtered.filter(function(c){ return c.status==="epuise"; });
+          var totalVendu   = filtered.reduce(function(a,c){ return a+c.amount; },0);
+          var totalRestant = activeCards.reduce(function(a,c){ return a+c.balance; },0);
+          var totalUtilise = filtered.reduce(function(a,c){ return a+(c.amount-c.balance); },0);
+
+          function toggleCardStatus(code) {
+            setGiftCards(function(prev){
+              return prev.map(function(c){
+                if(c.code!==code) return c;
+                return Object.assign({},c,{status:c.status==="inactive"?"active":"inactive"});
+              });
+            });
+          }
+
+          return (
+            <div>
+              {/* KPIs */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
+                {[
+                  {l:"Cartes émises",  v:filtered.length,                 icon:"🎁",bg:"linear-gradient(135deg,#C8953A,#a07228)",c:"#fff"},
+                  {l:"Total vendu",    v:"CHF "+totalVendu.toFixed(2),    icon:"💰",bg:"linear-gradient(135deg,#1E0E05,#3D2B1A)",c:"#C8953A"},
+                  {l:"Solde en cours", v:"CHF "+totalRestant.toFixed(2),  icon:"💳",bg:"linear-gradient(135deg,#7C3AED,#6D28D9)",c:"#fff"},
+                  {l:"Total utilisé",  v:"CHF "+totalUtilise.toFixed(2),  icon:"✅",bg:"linear-gradient(135deg,#065F46,#059669)",c:"#fff"},
+                  {l:"Actives",        v:activeCards.length,              icon:"🟢",bg:"#fff",c:"#065F46",border:true},
+                  {l:"Épuisées",       v:usedCards.length,                icon:"🔴",bg:"#fff",c:"#DC2626",border:true},
+                ].map(function(k){
+                  return (
+                    <div key={k.l} style={{background:k.bg,borderRadius:14,padding:"14px 16px",border:k.border?"1.5px solid #EDE0D0":"none"}}>
+                      <div style={{fontSize:16,marginBottom:2}}>{k.icon}</div>
+                      <div style={{fontSize:18,fontWeight:800,fontFamily:"'Outfit',sans-serif",color:k.c,marginBottom:1}}>{k.v}</div>
+                      <div style={{fontSize:9,color:k.c,opacity:.7,textTransform:"uppercase",letterSpacing:.8}}>{k.l}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Tableau des cartes */}
+              <div style={{background:"#fff",borderRadius:16,padding:18,border:"1.5px solid #EDE0D0"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                  <h4 style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:"#1E0E05",margin:0}}>🎁 Toutes les cartes ({filtered.length})</h4>
+                  {canExportData && filtered.length>0 && (
+                    <button onClick={function(){
+                      var csv="Code;Montant;Solde;Statut;Date;Magasin;Vendeuse;Email\n";
+                      filtered.forEach(function(c){ csv+=[c.code,c.amount.toFixed(2),c.balance.toFixed(2),c.status,c.createdAt,c.store,c.seller||"",c.email||""].join(";")+"\n"; });
+                      var blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+                      var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download="cartes_cadeaux.csv";a.click();URL.revokeObjectURL(url);
+                    }}
+                      style={{padding:"6px 14px",borderRadius:8,border:"1px solid #EDE0D0",background:"#F7F3EE",color:"#5C4A32",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                      📤 Export CSV
+                    </button>
+                  )}
+                </div>
+                <div style={{maxHeight:500,overflowY:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead>
+                      <tr style={{background:"#F7F3EE",position:"sticky",top:0}}>
+                        {["Code","Montant","Solde","Statut","Date","Magasin","Vendeuse","Email","Actions"].map(function(h){
+                          return <th key={h} style={{padding:"8px 6px",textAlign:"left",color:"#5C4A32",fontWeight:700,fontSize:10,borderBottom:"1.5px solid #EDE0D0",whiteSpace:"nowrap"}}>{h}</th>;
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length===0 ? (
+                        <tr><td colSpan={9} style={{padding:"30px",textAlign:"center",color:"#8B7355"}}>Aucune carte cadeau émise</td></tr>
+                      ) : filtered.map(function(c){
+                        var pct = c.amount>0?Math.round(c.balance/c.amount*100):0;
+                        var stColor = c.status==="active"?"#065F46":c.status==="epuise"?"#DC2626":"#8B7355";
+                        var stBg    = c.status==="active"?"#D1FAE5":c.status==="epuise"?"#FEE2E2":"#F3F4F6";
+                        var stLabel = c.status==="active"?"Active":c.status==="epuise"?"Épuisée":"Inactive";
+                        var isExp = expandedTicket===c.id;
+                        return React.createElement(React.Fragment,{key:c.id},
+                          React.createElement("tr",{className:"tr",onClick:function(){setExpandedTicket(isExp?null:c.id);},
+                            style:{borderBottom:isExp?"none":"1px solid #F7F3EE",cursor:"pointer",background:isExp?"#FDF8F0":"transparent"}},
+                            React.createElement("td",{style:{padding:"8px 6px",fontFamily:"'Courier New',monospace",fontWeight:700,color:"#1E0E05",letterSpacing:1,whiteSpace:"nowrap"}},
+                              (isExp?"▼ ":"▶ ")+c.code),
+                            React.createElement("td",{style:{padding:"8px 6px",fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}},"CHF "+c.amount.toFixed(2)),
+                            React.createElement("td",{style:{padding:"8px 6px"}},
+                              React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},
+                                React.createElement("div",{style:{width:40,height:5,background:"#F0E8DC",borderRadius:3,overflow:"hidden"}},
+                                  React.createElement("div",{style:{width:pct+"%",height:"100%",borderRadius:3,
+                                    background:pct>50?"#10B981":pct>20?"#F59E0B":"#EF4444",transition:"width .3s"}})),
+                                React.createElement("span",{style:{fontWeight:600,color:stColor,fontSize:11}},"CHF "+c.balance.toFixed(2))
+                              )),
+                            React.createElement("td",{style:{padding:"8px 6px"}},
+                              React.createElement("span",{style:{fontSize:9,fontWeight:700,color:stColor,background:stBg,padding:"2px 8px",borderRadius:10}},stLabel)),
+                            React.createElement("td",{style:{padding:"8px 6px",color:"#5C4A32",whiteSpace:"nowrap"}},c.createdAt+" "+(c.createdTime||"")),
+                            React.createElement("td",{style:{padding:"8px 6px",color:"#5C4A32",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},
+                              c.store?c.store.split(" ").slice(0,3).join(" "):"—"),
+                            React.createElement("td",{style:{padding:"8px 6px",color:"#5C4A32"}},c.seller||"—"),
+                            React.createElement("td",{style:{padding:"8px 6px",color:"#8B7355",fontSize:10}},c.email||"—"),
+                            React.createElement("td",{style:{padding:"8px 6px"}},
+                              React.createElement("button",{onClick:function(e){e.stopPropagation();toggleCardStatus(c.code);},
+                                style:{padding:"4px 10px",borderRadius:6,border:"1px solid #EDE0D0",
+                                       background:c.status==="inactive"?"#D1FAE5":"#FEE2E2",
+                                       color:c.status==="inactive"?"#065F46":"#DC2626",fontSize:9,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}},
+                                c.status==="inactive"?"▶ Activer":"⏸ Désactiver")
+                            )
+                          ),
+                          isExp && React.createElement("tr",{style:{background:"#FDF8F0",borderBottom:"2px solid #EDE0D0"}},
+                            React.createElement("td",{colSpan:9,style:{padding:"14px 18px"}},
+                              React.createElement("div",{style:{display:"flex",gap:20,flexWrap:"wrap"}},
+                                React.createElement("div",{style:{textAlign:"center",flexShrink:0}},
+                                  React.createElement("img",{src:qrUrl(c.code),alt:"QR",style:{width:110,height:110,borderRadius:10,border:"2px solid #EDE0D0"}}),
+                                  React.createElement("div",{style:{fontFamily:"'Courier New',monospace",fontSize:16,fontWeight:800,marginTop:6,letterSpacing:2}},c.code),
+                                  React.createElement("div",{style:{fontSize:10,color:"#8B7355",marginTop:4}},"Valeur: CHF "+c.amount.toFixed(2))
+                                ),
+                                React.createElement("div",{style:{flex:1,minWidth:200}},
+                                  React.createElement("div",{style:{fontSize:12,fontWeight:700,color:"#1E0E05",marginBottom:8}},"📜 Historique"),
+                                  (c.history||[]).length===0
+                                    ? React.createElement("div",{style:{fontSize:10,color:"#8B7355"}},"Aucune utilisation")
+                                    : (c.history||[]).map(function(h,idx){
+                                        return React.createElement("div",{key:idx,style:{display:"flex",gap:10,alignItems:"center",padding:"5px 0",
+                                          borderBottom:idx<(c.history||[]).length-1?"1px solid #F0E8DC":"none",fontSize:10}},
+                                          React.createElement("span",{style:{color:"#8B7355",whiteSpace:"nowrap"}},h.date+" "+h.time),
+                                          React.createElement("span",{style:{fontWeight:600,color:h.label?"#065F46":"#DC2626"}},
+                                            h.label || ("- CHF "+h.amount.toFixed(2))),
+                                          React.createElement("span",{style:{color:"#8B7355",marginLeft:"auto"}},"Solde: CHF "+h.balance.toFixed(2))
+                                        );
+                                      })
+                                )
+                              )
+                            )
+                          )
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── TAB: ABONNEMENTS ── */}
+        {adminTab==="abonnements" && (function(){
+
+          var filteredSubs = subsFilteredByStore;
+          var activeSubs = filteredSubs.filter(function(s){ return s.active; });
+          var pausedSubs = filteredSubs.filter(function(s){ return !s.active; });
+          var totalMensuel = activeSubs.reduce(function(acc,s){
+            var multiplier = s.frequency==="daily" ? s.days.length * 4.33
+                           : s.frequency==="weekly" ? s.days.length * 4.33
+                           : s.frequency==="monthly" ? s.days.length : 1;
+            return acc + s.total * multiplier;
+          },0);
+
+          // Preview next 7 days
+          var preview = [];
+          for(var d=0; d<7; d++){
+            var dt = new Date(); dt.setDate(dt.getDate()+d);
+            var dow = dt.getDay();
+            var dateStr = dt.toISOString().slice(0,10);
+            var dayLabel = d===0 ? "Aujourd'hui" : d===1 ? "Demain" : DAY_NAMES[dow]+" "+dt.getDate()+"/"+(dt.getMonth()+1);
+            var daySubs = activeSubs.filter(function(s){
+              if (s.startDate && dateStr < s.startDate) return false;
+              if (s.endDate && dateStr > s.endDate) return false;
+              if (s.frequency==="monthly") return s.days.indexOf(dt.getDate())!==-1;
+              return s.days.indexOf(dow)!==-1;
+            });
+            preview.push({label:dayLabel, date:dateStr, subs:daySubs, dow:dow, isToday:d===0});
+          }
+
+          // Edit form logic
+
+          function saveSub(data){
+            var total = data.items.reduce(function(a,i){return a+i.price*i.qty;},0);
+            if(editSub){
+              setSubscriptions(function(prev){
+                return prev.map(function(s){ return s.id===editSub.id ? Object.assign({},data,{id:editSub.id,total:total,lastGenerated:editSub.lastGenerated,createdAt:editSub.createdAt}) : s; });
+              });
+              setEditSub(null);
+            } else {
+              var newSub = Object.assign({},data,{id:"ABO-"+Date.now(),total:total,lastGenerated:null,createdAt:todayStr()});
+              setSubscriptions(function(prev){ return prev.concat([newSub]); });
+              setShowAddSub(false);
+            }
+            setSavedMsg("✅ Abonnement enregistré"); setTimeout(function(){ setSavedMsg(""); },2500);
+          }
+
+          function toggleSubActive(id){
+            setSubscriptions(function(prev){
+              return prev.map(function(s){ return s.id===id ? Object.assign({},s,{active:!s.active}) : s; });
+            });
+          }
+
+          function deleteSub(id){
+            setSubscriptions(function(prev){ return prev.filter(function(s){ return s.id!==id; }); });
+            setConfirmDeleteSub(null);
+            setSavedMsg("✅ Abonnement supprimé"); setTimeout(function(){ setSavedMsg(""); },2500);
+          }
+
+          return (
+            <div>
+              {/* Header + KPIs */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                {[
+                  {l:"Abonnements actifs", v:activeSubs.length, icon:"🔄",bg:"linear-gradient(135deg,#5B21B6,#7C3AED)",a:"#E9D5FF"},
+                  {l:"CA mensuel estimé",  v:"CHF "+totalMensuel.toFixed(0), icon:"💰",bg:"linear-gradient(135deg,#1E0E05,#3D2B1A)",a:"#C8953A"},
+                  {l:"À générer auj.",     v:subsDueToday.length, icon:"📋",bg:"linear-gradient(135deg,#065F46,#059669)",a:"#A7F3D0"},
+                  {l:"En pause",           v:pausedSubs.length,  icon:"⏸",bg:"linear-gradient(135deg,#92400E,#B45309)",a:"#FDE68A"},
+                ].map(function(k){
+                  return (
+                    <div key={k.l} className="ch" style={{background:k.bg,borderRadius:14,padding:"16px 14px",boxShadow:"0 4px 16px rgba(0,0,0,.1)"}}>
+                      <div style={{fontSize:22,marginBottom:4}}>{k.icon}</div>
+                      <div style={{fontSize:18,fontWeight:700,color:k.a,fontFamily:"'Outfit',sans-serif",marginBottom:2}}>{k.v}</div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,.42)",textTransform:"uppercase",letterSpacing:.8}}>{k.l}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Action bar */}
+              <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+                {canManageSubs && (
+                  <button onClick={function(){ setShowAddSub(true); setEditSub(null); setSubFormData(Object.assign({},emptySub,{store:userStore||STORES[0]})); setSubFormSearch(""); }}
+                    className="bg" style={{padding:"9px 18px",borderRadius:10,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",color:"#1E0E05"}}>
+                    + Nouvel abonnement
+                  </button>
+                )}
+                {subsDueToday.length>0 && (
+                  <button onClick={function(){
+                    var gen = generateSubOrders(subsDueToday);
+                    setSavedMsg("✅ "+gen.length+" commande(s) générée(s)"); setTimeout(function(){ setSavedMsg(""); },3000);
+                  }}
+                    style={{padding:"9px 18px",borderRadius:10,border:"2px solid #7C3AED",background:"transparent",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",color:"#7C3AED"}}>
+                    🔄 Générer les {subsDueToday.length} commande(s) du jour
+                  </button>
+                )}
+              </div>
+
+              {/* Calendrier 7 jours */}
+              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",marginBottom:16}}>
+                <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>📅 Aperçu 7 jours</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+                  {preview.map(function(day){
+                    var hasSubs = day.subs.length>0;
+                    var generated = day.isToday && day.subs.every(function(s){ return s.lastGenerated===day.date; });
+                    return (
+                      <div key={day.date} style={{textAlign:"center",padding:"8px 4px",borderRadius:10,
+                            background:day.isToday?"#EDE9FE":hasSubs?"#F0FDF4":"#F7F3EE",
+                            border:day.isToday?"2px solid #7C3AED":"1px solid "+(hasSubs?"#BBF7D0":"#EDE0D0")}}>
+                        <div style={{fontSize:9,fontWeight:700,color:day.isToday?"#5B21B6":"#8B7355",marginBottom:4,textTransform:"uppercase"}}>{day.label}</div>
+                        {hasSubs ? (
+                          <div>
+                            <div style={{fontSize:18,fontWeight:700,color:generated?"#10B981":"#5B21B6"}}>{generated?"✅":day.subs.length}</div>
+                            <div style={{fontSize:8,color:"#8B7355",marginTop:2}}>{generated?"Générées":day.subs.length+" cmd"}</div>
+                          </div>
+                        ) : (
+                          <div style={{fontSize:14,color:"#D5C4B0",marginTop:2}}>—</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Formulaire ajout/édition */}
+              {subFormData && (function(){
+                var f = subFormData;
+                var filtCat = catalogue.filter(function(p){ return p.active!==false && p.name.toLowerCase().indexOf(subFormSearch.toLowerCase())>=0; });
+
+                function updateF(patch){ setSubFormData(function(prev){ return Object.assign({},prev,patch); }); }
+                function toggleDay(d){
+                  var days = f.days.slice();
+                  var idx = days.indexOf(d);
+                  if(idx>=0) days.splice(idx,1); else days.push(d);
+                  days.sort(function(a,b){return a-b;});
+                  updateF({days:days});
+                }
+                function addItem(p){
+                  var items = f.items.slice();
+                  var ex = items.find(function(i){ return i.id===p.id; });
+                  if(ex){ ex = Object.assign({},ex,{qty:ex.qty+1}); items = items.map(function(i){ return i.id===p.id?ex:i; }); }
+                  else items.push({id:p.id,name:p.name,qty:1,price:p.price,emoji:p.emoji||""});
+                  updateF({items:items});
+                }
+                function setItemQty(id,delta){
+                  var items = f.items.map(function(i){
+                    if(i.id!==id) return i;
+                    return Object.assign({},i,{qty:Math.max(0,i.qty+delta)});
+                  }).filter(function(i){ return i.qty>0; });
+                  updateF({items:items});
+                }
+                function removeItem(id){
+                  updateF({items:f.items.filter(function(i){ return i.id!==id; })});
+                }
+                function closeForm(){ setEditSub(null); setShowAddSub(false); setSubFormData(null); setSubFormSearch(""); }
+
+                var total = f.items.reduce(function(a,i){ return a+i.price*i.qty; },0);
+                var valid = f.client && f.items.length>0 && f.days.length>0;
+
+                return (
+                  <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",marginBottom:16,border:"2px solid #C4B5FD"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                      <div style={{fontWeight:700,color:"#5B21B6",fontSize:14}}>{editSub?"✏️ Modifier l'abonnement":"🔄 Nouvel abonnement"}</div>
+                      <button onClick={closeForm}
+                        style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#8B7355"}}>✕</button>
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                      <div>
+                        <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Client *</label>
+                        <input value={f.client} onChange={function(e){updateF({client:e.target.value});}}
+                          placeholder="Nom du client" style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif"}} />
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Téléphone</label>
+                        <input value={f.phone||""} onChange={function(e){updateF({phone:e.target.value});}}
+                          placeholder="079 123 45 67" style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif"}} />
+                      </div>
+                    </div>
+
+                    {/* Fréquence */}
+                    <div style={{marginBottom:14}}>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:6}}>Fréquence</label>
+                      <div style={{display:"flex",gap:6,marginBottom:8}}>
+                        {FREQ_OPTS.map(function(fo){
+                          return (
+                            <button key={fo.id} onClick={function(){ updateF({frequency:fo.id,days:fo.id==="monthly"?[]:[1,2,3,4,5]}); }}
+                              style={{padding:"6px 14px",borderRadius:8,border:f.frequency===fo.id?"2px solid #7C3AED":"1px solid #D5C4B0",
+                                      background:f.frequency===fo.id?"#EDE9FE":"#F7F3EE",color:f.frequency===fo.id?"#5B21B6":"#8B7355",
+                                      fontSize:11,fontWeight:f.frequency===fo.id?700:400,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                              {fo.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                        {f.frequency==="monthly" ? (
+                          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                            <span style={{fontSize:10,color:"#8B7355"}}>Jours du mois :</span>
+                            <input value={f.days.join(",")} onChange={function(e){
+                              var vals = e.target.value.split(",").map(Number).filter(function(n){ return n>=1 && n<=31; });
+                              updateF({days:vals});
+                            }}
+                              placeholder="1,15" style={{width:100,padding:"4px 8px",borderRadius:6,border:"1px solid #D5C4B0",fontSize:11,fontFamily:"'Outfit',sans-serif"}} />
+                          </div>
+                        ) : (
+                          [0,1,2,3,4,5,6].map(function(d){
+                            var sel = f.days.indexOf(d)>=0;
+                            return (
+                              <button key={d} onClick={function(){ toggleDay(d); }}
+                                style={{width:36,height:36,borderRadius:8,border:sel?"2px solid #7C3AED":"1px solid #D5C4B0",
+                                        background:sel?"#7C3AED":"#F7F3EE",color:sel?"#fff":"#8B7355",
+                                        fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                                {DAY_NAMES[d]}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Livraison */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:14}}>
+                      <div>
+                        <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Mode</label>
+                        <select value={f.dMethod||"sur_place"} onChange={function(e){updateF({dMethod:e.target.value});}}
+                          style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
+                          <option value="livreur">🚐 Livraison</option>
+                          <option value="retrait">🔄 Retrait</option>
+                          <option value="sur_place">🏪 Sur place</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Magasin</label>
+                        <select value={f.store} onChange={function(e){updateF({store:e.target.value});}}
+                          style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
+                          {STORES.map(function(s){ return <option key={s} value={s}>{s}</option>; })}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Heure livraison</label>
+                        <input type="time" value={f.deliveryTime||""} onChange={function(e){updateF({deliveryTime:e.target.value});}}
+                          style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}} />
+                      </div>
+                    </div>
+
+                    {f.dMethod==="livreur" && (
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                        <div>
+                          <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Adresse de livraison</label>
+                          <input value={f.dest||""} onChange={function(e){updateF({dest:e.target.value});}}
+                            placeholder="Rue, ville" style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif"}} />
+                        </div>
+                        <div>
+                          <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Chauffeur</label>
+                          <select value={f.driver||""} onChange={function(e){updateF({driver:e.target.value});}}
+                            style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
+                            {DRIVERS.map(function(d){ return <option key={d} value={d}>{d}</option>; })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Dates */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                      <div>
+                        <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Date début</label>
+                        <input type="date" value={f.startDate||""} onChange={function(e){updateF({startDate:e.target.value});}}
+                          style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}} />
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Date fin (optionnel)</label>
+                        <input type="date" value={f.endDate||""} onChange={function(e){updateF({endDate:e.target.value});}}
+                          style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}} />
+                      </div>
+                    </div>
+
+                    {/* Note */}
+                    <div style={{marginBottom:14}}>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Note</label>
+                      <input value={f.note||""} onChange={function(e){updateF({note:e.target.value});}}
+                        placeholder="Instructions particulières" style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif"}} />
+                    </div>
+
+                    {/* Articles */}
+                    <div style={{marginBottom:14}}>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:6}}>Articles *</label>
+                      <input value={subFormSearch} onChange={function(e){setSubFormSearch(e.target.value);}}
+                        placeholder="🔍 Rechercher un produit..." style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif",marginBottom:8}} />
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:140,overflowY:"auto"}}>
+                        {filtCat.map(function(p){
+                          return (
+                            <button key={p.id} onClick={function(){ addItem(p); }}
+                              style={{padding:"5px 10px",borderRadius:8,border:"1px solid #EDE0D0",background:"#FDF8F0",
+                                      cursor:"pointer",fontSize:11,fontFamily:"'Outfit',sans-serif",display:"flex",gap:4,alignItems:"center"}}>
+                              <span>{p.emoji||"📦"}</span> {p.name} <span style={{color:"#C8953A",fontWeight:600}}>{p.price.toFixed(2)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {f.items.length>0 && (
+                        <div style={{marginTop:10,background:"#1E0E05",borderRadius:10,padding:10}}>
+                          {f.items.map(function(it){
+                            return (
+                              <div key={it.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:"1px solid #3D2B1A"}}>
+                                <span style={{color:"#FDF8F0",fontSize:11}}>{it.emoji} {it.name}</span>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <button onClick={function(){setItemQty(it.id,-1);}} style={{width:22,height:22,borderRadius:6,border:"none",background:"#5C4A32",color:"#FDF8F0",cursor:"pointer",fontSize:12,fontWeight:700}}>−</button>
+                                  <span style={{color:"#C8953A",fontWeight:700,fontSize:12,minWidth:20,textAlign:"center"}}>{it.qty}</span>
+                                  <button onClick={function(){setItemQty(it.id,1);}} style={{width:22,height:22,borderRadius:6,border:"none",background:"#5C4A32",color:"#FDF8F0",cursor:"pointer",fontSize:12,fontWeight:700}}>+</button>
+                                  <span style={{color:"#C8953A",fontSize:11,fontWeight:600,minWidth:55,textAlign:"right"}}>{(it.price*it.qty).toFixed(2)}</span>
+                                  <button onClick={function(){removeItem(it.id);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12}}>✕</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div style={{display:"flex",justifyContent:"flex-end",paddingTop:8}}>
+                            <span style={{color:"#C8953A",fontWeight:700,fontSize:14}}>Total: CHF {total.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Boutons */}
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+                      <button onClick={closeForm}
+                        style={{padding:"9px 18px",borderRadius:10,border:"1px solid #D5C4B0",background:"transparent",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",color:"#8B7355"}}>
+                        Annuler
+                      </button>
+                      <button disabled={!valid} onClick={function(){ saveSub(f); closeForm(); }}
+                        className="bg" style={{padding:"9px 22px",borderRadius:10,border:"none",fontSize:12,fontWeight:700,cursor:valid?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif",color:"#1E0E05",opacity:valid?1:.5}}>
+                        {editSub?"✓ Enregistrer":"+ Créer l'abonnement"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Liste des abonnements */}
+              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
+                <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>
+                  📋 Abonnements ({filteredSubs.length})
+                </div>
+                {filteredSubs.length===0 && (
+                  <div style={{textAlign:"center",padding:"30px 0",color:"#8B7355",fontSize:12}}>
+                    Aucun abonnement — créez-en un avec le bouton ci-dessus
+                  </div>
+                )}
+                {filteredSubs.map(function(sub){
+                  var freqLabel = sub.frequency==="daily"?"Quotidien":sub.frequency==="weekly"?"Hebdomadaire":"Mensuel";
+                  var daysLabel = sub.frequency==="monthly"
+                    ? sub.days.map(function(d){return d;}).join(", ")+" du mois"
+                    : sub.days.map(function(d){return DAY_NAMES[d];}).join(", ");
+                  var isDue = isDueToday(sub);
+                  var modeIcon = sub.dMethod==="livreur"?"🚐":sub.dMethod==="retrait"?"🔄":"🏪";
+
+                  return (
+                    <div key={sub.id} style={{borderBottom:"1px solid #F0E8DC",padding:"14px 0",animation:"fadeUp .35s ease",opacity:sub.active?1:.55}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                        <div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:14,fontWeight:700,color:sub.active?"#1E0E05":"#8B7355"}}>{sub.client}</span>
+                            {sub.active ? (
+                              <span style={{fontSize:8,fontWeight:700,color:"#065F46",background:"#D1FAE5",padding:"2px 8px",borderRadius:10}}>ACTIF</span>
+                            ) : (
+                              <span style={{fontSize:8,fontWeight:700,color:"#92400E",background:"#FEF3C7",padding:"2px 8px",borderRadius:10}}>PAUSE</span>
+                            )}
+                            {isDue && <span style={{fontSize:8,fontWeight:700,color:"#5B21B6",background:"#EDE9FE",padding:"2px 8px",borderRadius:10,animation:"glow 1s infinite alternate"}}>À GÉNÉRER</span>}
+                          </div>
+                          <div style={{fontSize:11,color:"#8B7355",marginTop:3}}>
+                            {modeIcon} {freqLabel} · {daysLabel} · {sub.deliveryTime||"—"}
+                          </div>
+                          {sub.phone && <div style={{fontSize:10,color:"#8B7355",marginTop:2}}>📞 {sub.phone}</div>}
+                          {sub.dest && <div style={{fontSize:10,color:"#8B7355",marginTop:2}}>📍 {sub.dest}</div>}
+                          {sub.driver && sub.driver!=="Non assigné" && <div style={{fontSize:10,color:"#8B7355",marginTop:2}}>🚐 {sub.driver}</div>}
+                          {sub.note && <div style={{fontSize:10,color:"#5B21B6",marginTop:2,fontStyle:"italic"}}>💬 {sub.note}</div>}
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontSize:16,fontWeight:700,color:"#C8953A"}}>CHF {sub.total.toFixed(2)}</div>
+                          <div style={{fontSize:9,color:"#8B7355"}}>{sub.store.split(" ").slice(0,3).join(" ")}</div>
+                          {sub.endDate && <div style={{fontSize:9,color:"#8B7355"}}>Fin: {sub.endDate}</div>}
+                        </div>
+                      </div>
+                      {/* Items résumé */}
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+                        {sub.items.map(function(it){
+                          return (
+                            <span key={it.id} style={{fontSize:10,background:"#F7F3EE",border:"1px solid #EDE0D0",borderRadius:6,padding:"2px 8px",color:"#5C4A32"}}>
+                              {it.emoji||""} {it.name} ×{it.qty}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {/* Actions */}
+                      {canManageSubs && (
+                        <div style={{display:"flex",gap:6}}>
+                          <button onClick={function(){ setEditSub(sub); setShowAddSub(false); setSubFormData(Object.assign({},sub)); setSubFormSearch(""); }}
+                            style={{padding:"4px 12px",borderRadius:6,border:"1px solid #D5C4B0",background:"#FDF8F0",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Outfit',sans-serif",color:"#5C4A32"}}>
+                            ✏️ Modifier
+                          </button>
+                          <button onClick={function(){ toggleSubActive(sub.id); }}
+                            style={{padding:"4px 12px",borderRadius:6,border:"1px solid #D5C4B0",
+                                    background:sub.active?"#FEF3C7":"#D1FAE5",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Outfit',sans-serif",
+                                    color:sub.active?"#92400E":"#065F46"}}>
+                            {sub.active?"⏸ Pause":"▶ Reprendre"}
+                          </button>
+                          {isDue && (
+                            <button onClick={function(){
+                              var gen = generateSubOrders([sub]);
+                              setSavedMsg("✅ Commande générée pour "+sub.client); setTimeout(function(){ setSavedMsg(""); },2500);
+                            }}
+                              style={{padding:"4px 12px",borderRadius:6,border:"2px solid #7C3AED",background:"#EDE9FE",cursor:"pointer",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",color:"#5B21B6"}}>
+                              🔄 Générer
+                            </button>
+                          )}
+                          {confirmDeleteSub===sub.id ? (
+                            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                              <span style={{fontSize:10,color:"#DC2626",fontWeight:600}}>Confirmer ?</span>
+                              <button onClick={function(){ deleteSub(sub.id); }}
+                                style={{padding:"4px 10px",borderRadius:6,border:"none",background:"#DC2626",color:"#fff",cursor:"pointer",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif"}}>Oui</button>
+                              <button onClick={function(){ setConfirmDeleteSub(null); }}
+                                style={{padding:"4px 10px",borderRadius:6,border:"1px solid #D5C4B0",background:"#F7F3EE",cursor:"pointer",fontSize:10,fontFamily:"'Outfit',sans-serif",color:"#8B7355"}}>Non</button>
+                            </div>
+                          ) : (
+                            <button onClick={function(){ setConfirmDeleteSub(sub.id); }}
+                              style={{padding:"4px 12px",borderRadius:6,border:"1px solid #FCA5A5",background:"#FEF2F2",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Outfit',sans-serif",color:"#DC2626"}}>
+                              🗑
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── TAB: PLANNING PRODUCTION ── */}
+        {adminTab==="planning" && (function(){
+          // Aggregate production needs from pending orders
+          var pendingOrders = orders.filter(function(o){ return o.status==="attente"||o.status==="production"; });
+          if(storeFilter!=="all") pendingOrders = pendingOrders.filter(function(o){ return o.store===storeFilter; });
+
+          // Aggregate from today's subscriptions (not yet generated)
+          var todayD = new Date().toISOString().slice(0,10);
+          var aboItems = [];
+          subscriptions.filter(function(s){ return s.active && s.lastGenerated!==todayD; }).forEach(function(s){
+            var dow = new Date().getDay();
+            var isDue = s.frequency==="monthly" ? s.days.indexOf(new Date().getDate())!==-1 : s.days.indexOf(dow)!==-1;
+            if(isDue && (storeFilter==="all"||s.store===storeFilter)){
+              s.items.forEach(function(it){ aboItems.push(Object.assign({},it,{source:"abo",client:s.client})); });
+            }
+          });
+
+          // Build product aggregation
+          var prodAgg = {};
+          pendingOrders.forEach(function(o){
+            o.items.forEach(function(it){
+              var key = it.name;
+              if(!prodAgg[key]) prodAgg[key]={name:it.name,id:it.id,qty:0,orders:0,emoji:"",aboQty:0};
+              prodAgg[key].qty += it.qty;
+              prodAgg[key].orders++;
+            });
+          });
+          aboItems.forEach(function(it){
+            var key = it.name;
+            if(!prodAgg[key]) prodAgg[key]={name:it.name,id:it.id,qty:0,orders:0,emoji:it.emoji||"",aboQty:0};
+            prodAgg[key].aboQty += it.qty;
+            prodAgg[key].emoji = it.emoji||prodAgg[key].emoji;
+          });
+          // Enrich with catalogue emoji/recipe
+          Object.values(prodAgg).forEach(function(p){
+            var catItem = catalogue.find(function(c){ return c.id===p.id||c.name===p.name; });
+            if(catItem){ p.emoji = catItem.emoji||p.emoji; p.productId = catItem.id; }
+            p.recipe = recipes.find(function(r){ return r.productId===p.productId||r.name===p.name; });
+            p.totalQty = p.qty + p.aboQty;
+          });
+          var sortedProds = Object.values(prodAgg).sort(function(a,b){ return b.totalQty - a.totalQty; });
+          var maxQty = sortedProds.length>0 ? sortedProds[0].totalQty : 1;
+
+          // Timeline: orders by time
+          var timeline = pendingOrders.slice().sort(function(a,b){ return (a.time||"").localeCompare(b.time||""); });
+
+          // Recipes stats
+          var productsWithRecipe = catalogue.filter(function(p){ return p.active && recipes.some(function(r){ return r.productId===p.id; }); }).length;
+          var productsWithoutRecipe = catalogue.filter(function(p){ return p.active; }).length - productsWithRecipe;
+
+          return (
+            <div>
+              {/* KPIs */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                {[
+                  {l:"Commandes en cours",v:pendingOrders.length,icon:"📋",bg:"linear-gradient(135deg,#1E40AF,#2563EB)",a:"#BFDBFE"},
+                  {l:"Produits à préparer",v:sortedProds.length,icon:"🏭",bg:"linear-gradient(135deg,#1E0E05,#3D2B1A)",a:"#C8953A"},
+                  {l:"Pièces totales",v:sortedProds.reduce(function(a,p){return a+p.totalQty;},0),icon:"📦",bg:"linear-gradient(135deg,#065F46,#059669)",a:"#A7F3D0"},
+                  {l:"Fiches recettes",v:productsWithRecipe+"/"+catalogue.filter(function(p){return p.active;}).length,icon:"📖",bg:"linear-gradient(135deg,#7C3AED,#5B21B6)",a:"#E9D5FF"},
+                ].map(function(k){
+                  return (
+                    <div key={k.l} className="ch" style={{background:k.bg,borderRadius:14,padding:"16px 14px",boxShadow:"0 4px 16px rgba(0,0,0,.1)"}}>
+                      <div style={{fontSize:22,marginBottom:4}}>{k.icon}</div>
+                      <div style={{fontSize:18,fontWeight:700,color:k.a,fontFamily:"'Outfit',sans-serif",marginBottom:2}}>{k.v}</div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,.42)",textTransform:"uppercase",letterSpacing:.8}}>{k.l}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Besoins production agrégés */}
+              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",marginBottom:16}}>
+                <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:14}}>🏭 Besoins de production — aujourd'hui</div>
+                {sortedProds.length===0 && (
+                  <div style={{textAlign:"center",padding:"30px 0",color:"#8B7355",fontSize:12}}>
+                    🎉 Aucune production en attente
+                  </div>
+                )}
+                {sortedProds.map(function(p){
+                  var pct = Math.round(p.totalQty/maxQty*100);
+                  var hasRecipe = !!p.recipe;
+                  return (
+                    <div key={p.name} style={{marginBottom:12,animation:"fadeUp .3s ease"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:18}}>{p.emoji||"📦"}</span>
+                          <div>
+                            <span style={{fontSize:12,fontWeight:600,color:"#1E0E05"}}>{p.name}</span>
+                            <div style={{fontSize:10,color:"#8B7355"}}>
+                              {p.qty>0 && <span>{p.qty} (commandes)</span>}
+                              {p.qty>0&&p.aboQty>0 && <span> + </span>}
+                              {p.aboQty>0 && <span style={{color:"#7C3AED"}}>{p.aboQty} (abonnements)</span>}
+                              {" · "+p.orders+" cmd"}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:20,fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>{p.totalQty}</span>
+                          {hasRecipe && (
+                            <button onClick={function(){ setViewRecipe(p.recipe); }}
+                              style={{padding:"3px 8px",borderRadius:6,border:"1px solid #C4B5FD",background:"#EDE9FE",color:"#5B21B6",fontSize:9,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                              📖 Recette
+                            </button>
+                          )}
+                          {!hasRecipe && canManageRecipes && (
+                            <button onClick={function(){
+                              var catP = catalogue.find(function(c){ return c.id===p.productId||c.name===p.name; });
+                              if(catP) setEditRecipe({id:"REC-"+Date.now(),productId:catP.id,name:catP.name,portions:10,prepTime:0,cookTime:0,restTime:0,difficulty:"moyen",ingredients:[],steps:[],notes:"",costPerBatch:0});
+                            }}
+                              style={{padding:"3px 8px",borderRadius:6,border:"1px dashed #D5C4B0",background:"transparent",color:"#8B7355",fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                              + Recette
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{height:8,background:"#F0E8DC",borderRadius:4,overflow:"hidden"}}>
+                        <div style={{height:"100%",borderRadius:4,background:"linear-gradient(90deg,#C8953A,#a07228)",width:pct+"%",transition:"width .6s ease"}} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Timeline commandes */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+                <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
+                  <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>⏱ Timeline commandes</div>
+                  {timeline.length===0 && <div style={{color:"#8B7355",fontSize:11,textAlign:"center",padding:20}}>Aucune commande en attente</div>}
+                  {timeline.slice(0,12).map(function(o){
+                    var sm = SM[o.status]||SM.attente;
+                    return (
+                      <div key={o.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #F0E8DC"}}>
+                        <div style={{width:6,height:6,borderRadius:3,background:sm.dot,flexShrink:0}} />
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:11,fontWeight:600,color:"#1E0E05"}}>{o.id} · {o.client}</div>
+                          <div style={{fontSize:10,color:"#8B7355"}}>{o.items.map(function(i){return i.qty+"x "+i.name;}).join(", ")}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:11,fontWeight:600,color:"#C8953A"}}>{o.time}</div>
+                          <span style={{fontSize:8,fontWeight:700,color:sm.tx,background:sm.bg,padding:"1px 6px",borderRadius:8}}>{sm.label}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Fiches recettes catalogue */}
+                <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div style={{fontWeight:600,color:"#1E0E05",fontSize:12}}>📖 Fiches recettes</div>
+                    {productsWithoutRecipe>0 && <span style={{fontSize:9,color:"#F59E0B",fontWeight:600}}>{productsWithoutRecipe} sans recette</span>}
+                  </div>
+                  {recipes.map(function(r){
+                    var diff = DIFF_OPTS.find(function(d){return d.id===r.difficulty;})||DIFF_OPTS[1];
+                    var catP = catalogue.find(function(c){return c.id===r.productId;});
+                    return (
+                      <div key={r.id} className="tr" onClick={function(){ setViewRecipe(r); }}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"8px 6px",borderBottom:"1px solid #F0E8DC",cursor:"pointer",borderRadius:6}}>
+                        <span style={{fontSize:18}}>{catP?catP.emoji:"📦"}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:600,color:"#1E0E05"}}>{r.name}</div>
+                          <div style={{fontSize:10,color:"#8B7355"}}>{r.portions} portions · {r.prepTime+r.cookTime} min</div>
+                        </div>
+                        <span style={{fontSize:8,fontWeight:700,color:diff.color,background:diff.color+"18",padding:"2px 8px",borderRadius:8}}>{diff.label}</span>
+                        {canManageRecipes && (
+                          <button onClick={function(e){ e.stopPropagation(); setEditRecipe(Object.assign({},r)); }}
+                            style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#8B7355"}}>✏️</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {/* Add new recipe for products without one */}
+                  {canManageRecipes && (
+                    <div style={{marginTop:10}}>
+                      {catalogue.filter(function(p){ return p.active && !recipes.some(function(r){return r.productId===p.id;}); }).slice(0,5).map(function(p){
+                        return (
+                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 6px",opacity:.5}}>
+                            <span>{p.emoji||"📦"}</span>
+                            <span style={{flex:1,fontSize:10,color:"#8B7355"}}>{p.name}</span>
+                            <button onClick={function(){
+                              setEditRecipe({id:"REC-"+Date.now(),productId:p.id,name:p.name,portions:10,prepTime:0,cookTime:0,restTime:0,difficulty:"moyen",ingredients:[],steps:[],notes:"",costPerBatch:0});
+                            }}
+                              style={{padding:"2px 8px",borderRadius:6,border:"1px dashed #D5C4B0",background:"transparent",color:"#8B7355",fontSize:9,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                              + Créer fiche
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── RECIPE VIEW MODAL ── */}
+        {viewRecipe && (function(){
+          var r = viewRecipe;
+          var diff = DIFF_OPTS.find(function(d){return d.id===r.difficulty;})||DIFF_OPTS[1];
+          var catP = catalogue.find(function(c){return c.id===r.productId;});
+          var totalCost = r.ingredients.reduce(function(a,ing){return a+ing.cost;},0);
+          var costPerUnit = r.portions>0 ? totalCost/r.portions : 0;
+          var totalTime = r.prepTime + r.cookTime + (r.restTime||0);
+          var timeLabel = totalTime>=60 ? Math.floor(totalTime/60)+"h"+((totalTime%60)>0?(totalTime%60+"min"):"") : totalTime+"min";
+          return (
+            <div style={{position:"fixed",inset:0,background:"rgba(30,14,5,.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+              onClick={function(){ setViewRecipe(null); }}>
+              <div style={{background:"#FDF8F0",borderRadius:18,maxWidth:580,width:"100%",maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",animation:"fadeUp .25s ease"}}
+                onClick={function(e){e.stopPropagation();}}>
+                {/* Header */}
+                <div style={{background:"linear-gradient(135deg,#1E0E05,#3D2B1A)",padding:"20px 22px",borderRadius:"18px 18px 0 0"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{fontSize:28,marginBottom:4}}>{catP?catP.emoji:"📖"}</div>
+                      <div style={{fontSize:18,fontWeight:700,color:"#FDF8F0",fontFamily:"'Outfit',sans-serif"}}>{r.name}</div>
+                      <div style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap"}}>
+                        <span style={{fontSize:9,fontWeight:700,color:diff.color,background:"rgba(255,255,255,.12)",padding:"3px 10px",borderRadius:10}}>{diff.label}</span>
+                        <span style={{fontSize:9,fontWeight:600,color:"#C8953A",background:"rgba(255,255,255,.08)",padding:"3px 10px",borderRadius:10}}>🍽 {r.portions} portions</span>
+                        <span style={{fontSize:9,fontWeight:600,color:"#A7F3D0",background:"rgba(255,255,255,.08)",padding:"3px 10px",borderRadius:10}}>⏱ {timeLabel}</span>
+                      </div>
+                    </div>
+                    <button onClick={function(){ setViewRecipe(null); }}
+                      style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:8,width:32,height:32,color:"#FDF8F0",fontSize:16,cursor:"pointer"}}>✕</button>
+                  </div>
+                </div>
+                <div style={{padding:20}}>
+                  {/* Temps */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:18}}>
+                    {[
+                      {l:"Préparation",v:r.prepTime+"min",icon:"👨‍🍳",bg:"#DBEAFE",c:"#1E40AF"},
+                      {l:"Cuisson",v:r.cookTime+"min",icon:"🔥",bg:"#FEF3C7",c:"#92400E"},
+                      {l:"Repos/Pousse",v:r.restTime>=60?Math.floor(r.restTime/60)+"h"+(r.restTime%60>0?r.restTime%60+"m":""):r.restTime+"min",icon:"⏳",bg:"#F3E8FF",c:"#7C3AED"},
+                    ].map(function(t){
+                      return (
+                        <div key={t.l} style={{background:t.bg,borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                          <div style={{fontSize:16}}>{t.icon}</div>
+                          <div style={{fontSize:14,fontWeight:700,color:t.c,fontFamily:"'Outfit',sans-serif"}}>{t.v}</div>
+                          <div style={{fontSize:9,color:t.c,textTransform:"uppercase",letterSpacing:.8}}>{t.l}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Ingrédients */}
+                  <div style={{marginBottom:18}}>
+                    <div style={{fontWeight:700,color:"#1E0E05",fontSize:13,marginBottom:8}}>🧈 Ingrédients ({r.ingredients.length})</div>
+                    <div style={{background:"#fff",borderRadius:10,overflow:"hidden",border:"1px solid #EDE0D0"}}>
+                      {r.ingredients.map(function(ing,idx){
+                        return (
+                          <div key={idx} style={{display:"flex",justifyContent:"space-between",padding:"7px 12px",borderBottom:idx<r.ingredients.length-1?"1px solid #F0E8DC":"none",fontSize:12}}>
+                            <span style={{color:"#3D2B1A",fontWeight:500}}>{ing.name}</span>
+                            <div style={{display:"flex",gap:12}}>
+                              <span style={{color:"#C8953A",fontWeight:600}}>{ing.qty} {ing.unit}</span>
+                              <span style={{color:"#8B7355",minWidth:50,textAlign:"right"}}>{ing.cost>0?"CHF "+ing.cost.toFixed(2):"-"}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",background:"#F7F3EE",fontWeight:700,fontSize:12}}>
+                        <span style={{color:"#1E0E05"}}>Coût total batch</span>
+                        <span style={{color:"#C8953A"}}>CHF {totalCost.toFixed(2)} · {costPerUnit.toFixed(2)}/pièce</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Étapes */}
+                  <div style={{marginBottom:18}}>
+                    <div style={{fontWeight:700,color:"#1E0E05",fontSize:13,marginBottom:8}}>📝 Étapes ({r.steps.length})</div>
+                    {r.steps.map(function(step,idx){
+                      return (
+                        <div key={idx} style={{display:"flex",gap:10,marginBottom:8}}>
+                          <div style={{width:24,height:24,borderRadius:12,background:"#1E0E05",color:"#C8953A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>{idx+1}</div>
+                          <div style={{fontSize:12,color:"#3D2B1A",lineHeight:1.5,paddingTop:3}}>{step}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Notes */}
+                  {r.notes && (
+                    <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",display:"flex",gap:8,alignItems:"flex-start"}}>
+                      <span style={{fontSize:14}}>💡</span>
+                      <div style={{fontSize:11,color:"#92400E",lineHeight:1.5}}>{r.notes}</div>
+                    </div>
+                  )}
+                  {/* Actions */}
+                  <div style={{display:"flex",gap:8,marginTop:16,justifyContent:"flex-end"}}>
+                    {canManageRecipes && (
+                      <button onClick={function(){ setEditRecipe(Object.assign({},r)); setViewRecipe(null); }}
+                        style={{padding:"8px 16px",borderRadius:8,border:"1px solid #D5C4B0",background:"#FDF8F0",color:"#5C4A32",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                        ✏️ Modifier
+                      </button>
+                    )}
+                    <button onClick={function(){ setViewRecipe(null); }}
+                      className="bg" style={{padding:"8px 18px",borderRadius:8,border:"none",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif",color:"#1E0E05"}}>
+                      Fermer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── RECIPE EDIT MODAL ── */}
+        {editRecipe && (function(){
+          var r = editRecipe;
+          function updR(patch){ setEditRecipe(function(prev){ return Object.assign({},prev,patch); }); }
+          function addIngredient(){ updR({ingredients:r.ingredients.concat([{name:"",qty:0,unit:"g",cost:0}])}); }
+          function updIngredient(idx,patch){
+            var ings = r.ingredients.map(function(ing,i){ return i===idx?Object.assign({},ing,patch):ing; });
+            updR({ingredients:ings});
+          }
+          function removeIngredient(idx){ updR({ingredients:r.ingredients.filter(function(_,i){return i!==idx;})}); }
+          function addStep(){ updR({steps:r.steps.concat([""])}); }
+          function updStep(idx,text){ var s=r.steps.slice(); s[idx]=text; updR({steps:s}); }
+          function removeStep(idx){ updR({steps:r.steps.filter(function(_,i){return i!==idx;})}); }
+          function saveRecipe(){
+            var totalCost = r.ingredients.reduce(function(a,ing){return a+(parseFloat(ing.cost)||0);},0);
+            var rec = Object.assign({},r,{costPerBatch:totalCost});
+            setRecipes(function(prev){
+              var exists = prev.find(function(p){ return p.id===rec.id; });
+              return exists ? prev.map(function(p){ return p.id===rec.id?rec:p; }) : prev.concat([rec]);
+            });
+            setEditRecipe(null);
+            setSavedMsg("✅ Fiche recette enregistrée"); setTimeout(function(){ setSavedMsg(""); },2500);
+          }
+          var valid = r.name && r.ingredients.length>0 && r.steps.length>0;
+          return (
+            <div style={{position:"fixed",inset:0,background:"rgba(30,14,5,.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+              onClick={function(){ setEditRecipe(null); }}>
+              <div style={{background:"#FDF8F0",borderRadius:18,maxWidth:620,width:"100%",maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",animation:"fadeUp .25s ease"}}
+                onClick={function(e){e.stopPropagation();}}>
+                <div style={{padding:22}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                    <div style={{fontWeight:700,color:"#1E0E05",fontSize:16,fontFamily:"'Outfit',sans-serif"}}>📖 {r.id&&recipes.some(function(x){return x.id===r.id;})?"Modifier":"Nouvelle"} fiche recette</div>
+                    <button onClick={function(){ setEditRecipe(null); }}
+                      style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#8B7355"}}>✕</button>
+                  </div>
+                  {/* Info de base */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+                    <div style={{gridColumn:"1/3"}}>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Produit</label>
+                      <input value={r.name} readOnly style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#EDE0D0",fontSize:12,fontFamily:"'Outfit',sans-serif",color:"#5C4A32"}} />
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Portions/batch</label>
+                      <input type="number" min="1" value={r.portions} onChange={function(e){updR({portions:parseInt(e.target.value)||1});}}
+                        style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}} />
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10,marginBottom:14}}>
+                    <div>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Prépa (min)</label>
+                      <input type="number" min="0" value={r.prepTime} onChange={function(e){updR({prepTime:parseInt(e.target.value)||0});}}
+                        style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}} />
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Cuisson (min)</label>
+                      <input type="number" min="0" value={r.cookTime} onChange={function(e){updR({cookTime:parseInt(e.target.value)||0});}}
+                        style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}} />
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Repos (min)</label>
+                      <input type="number" min="0" value={r.restTime} onChange={function(e){updR({restTime:parseInt(e.target.value)||0});}}
+                        style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}} />
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:3}}>Difficulté</label>
+                      <select value={r.difficulty} onChange={function(e){updR({difficulty:e.target.value});}}
+                        style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
+                        {DIFF_OPTS.map(function(d){ return <option key={d.id} value={d.id}>{d.label}</option>; })}
+                      </select>
+                    </div>
+                  </div>
+                  {/* Ingrédients */}
+                  <div style={{marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <label style={{fontSize:11,fontWeight:700,color:"#1E0E05"}}>🧈 Ingrédients</label>
+                      <button onClick={addIngredient}
+                        style={{padding:"3px 10px",borderRadius:6,border:"1px solid #C8953A",background:"transparent",color:"#C8953A",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>+ Ajouter</button>
+                    </div>
+                    {r.ingredients.map(function(ing,idx){
+                      return (
+                        <div key={idx} style={{display:"grid",gridTemplateColumns:"2fr 1fr 60px 80px 24px",gap:6,marginBottom:4,alignItems:"center"}}>
+                          <input value={ing.name} onChange={function(e){updIngredient(idx,{name:e.target.value});}} placeholder="Ingrédient"
+                            style={{padding:"5px 8px",borderRadius:6,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:11,fontFamily:"'Outfit',sans-serif"}} />
+                          <input type="number" min="0" step="0.1" value={ing.qty} onChange={function(e){updIngredient(idx,{qty:parseFloat(e.target.value)||0});}}
+                            style={{padding:"5px 8px",borderRadius:6,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:11,fontFamily:"'Outfit',sans-serif"}} />
+                          <select value={ing.unit} onChange={function(e){updIngredient(idx,{unit:e.target.value});}}
+                            style={{padding:"5px 4px",borderRadius:6,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:10,fontFamily:"'Outfit',sans-serif"}}>
+                            {["g","kg","ml","L","pcs","pincée","cs","cc"].map(function(u){ return <option key={u} value={u}>{u}</option>; })}
+                          </select>
+                          <input type="number" min="0" step="0.01" value={ing.cost} onChange={function(e){updIngredient(idx,{cost:parseFloat(e.target.value)||0});}}
+                            placeholder="CHF" style={{padding:"5px 8px",borderRadius:6,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:11,fontFamily:"'Outfit',sans-serif"}} />
+                          <button onClick={function(){removeIngredient(idx);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12}}>✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Étapes */}
+                  <div style={{marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <label style={{fontSize:11,fontWeight:700,color:"#1E0E05"}}>📝 Étapes</label>
+                      <button onClick={addStep}
+                        style={{padding:"3px 10px",borderRadius:6,border:"1px solid #C8953A",background:"transparent",color:"#C8953A",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>+ Ajouter</button>
+                    </div>
+                    {r.steps.map(function(step,idx){
+                      return (
+                        <div key={idx} style={{display:"flex",gap:6,marginBottom:4,alignItems:"center"}}>
+                          <span style={{width:20,height:20,borderRadius:10,background:"#1E0E05",color:"#C8953A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,flexShrink:0}}>{idx+1}</span>
+                          <input value={step} onChange={function(e){updStep(idx,e.target.value);}} placeholder={"Étape "+(idx+1)}
+                            style={{flex:1,padding:"5px 8px",borderRadius:6,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:11,fontFamily:"'Outfit',sans-serif"}} />
+                          <button onClick={function(){removeStep(idx);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12}}>✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Notes */}
+                  <div style={{marginBottom:16}}>
+                    <label style={{fontSize:11,fontWeight:700,color:"#1E0E05",display:"block",marginBottom:4}}>💡 Notes & astuces</label>
+                    <textarea value={r.notes||""} onChange={function(e){updR({notes:e.target.value});}} rows="3" placeholder="Conseils, variantes, points d'attention..."
+                      style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,fontFamily:"'Outfit',sans-serif",resize:"vertical"}} />
+                  </div>
+                  {/* Boutons */}
+                  <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                    <button onClick={function(){ setEditRecipe(null); }}
+                      style={{padding:"9px 18px",borderRadius:10,border:"1px solid #D5C4B0",background:"transparent",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",color:"#8B7355"}}>
+                      Annuler
+                    </button>
+                    <button disabled={!valid} onClick={saveRecipe}
+                      className="bg" style={{padding:"9px 22px",borderRadius:10,border:"none",fontSize:12,fontWeight:700,cursor:valid?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif",color:"#1E0E05",opacity:valid?1:.5}}>
+                      ✓ Enregistrer la recette
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── TAB: REPORTING ── */}
+        {adminTab==="reporting" && (function(){
+          // ── Date helpers ──
+          function parseD(d){ var p=d.split("."); return new Date(p[2],p[1]-1,p[0]); }
+          var now = new Date();
+          var todayS = now.toLocaleDateString("fr-CH");
+          var allS = sales||[];
+          var fs = storeFilter==="all" ? allS : allS.filter(function(s){ return s.store===storeFilter; });
+
+          // ── Period filtering ──
+          var periodStart, periodEnd = now, periodLabel;
+          if(reportPeriod==="jour"){ periodStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()); periodLabel="Aujourd'hui"; }
+          else if(reportPeriod==="semaine"){ periodStart=new Date(now); periodStart.setDate(now.getDate()-now.getDay()+1); periodStart.setHours(0,0,0,0); periodLabel="Cette semaine"; }
+          else if(reportPeriod==="mois"){ periodStart=new Date(now.getFullYear(),now.getMonth(),1); periodLabel="Ce mois"; }
+          else if(reportPeriod==="trimestre"){ var q=Math.floor(now.getMonth()/3)*3; periodStart=new Date(now.getFullYear(),q,1); periodLabel="Ce trimestre (T"+(Math.floor(q/3)+1)+")"; }
+          else if(reportPeriod==="annee"){ periodStart=new Date(now.getFullYear(),0,1); periodLabel="Année "+now.getFullYear(); }
+          else if(reportPeriod==="custom" && reportCustomFrom){
+            var cf=reportCustomFrom.split("-"); periodStart=new Date(cf[0],cf[1]-1,cf[2]);
+            if(reportCustomTo){ var ct=reportCustomTo.split("-"); periodEnd=new Date(ct[0],ct[1]-1,ct[2]); }
+            periodLabel=reportCustomFrom+(reportCustomTo?" → "+reportCustomTo:"");
+          } else { periodStart=new Date(now.getFullYear(),now.getMonth(),1); periodLabel="Ce mois"; }
+          periodStart.setHours(0,0,0,0);
+
+          var periodSales = fs.filter(function(s){ var d=parseD(s.date); return d>=periodStart && d<=periodEnd; });
+          var totalCA = periodSales.reduce(function(a,s){return a+s.total;},0);
+          var totalTx = periodSales.length;
+          var avgTicket = totalTx>0 ? totalCA/totalTx : 0;
+
+          // ── TVA ventilation ──
+          var tvaByRate = {};
+          periodSales.forEach(function(s){
+            (s.items||[]).forEach(function(it){
+              var rate = it.tva||2.6;
+              if(!tvaByRate[rate]) tvaByRate[rate]={rate:rate,ht:0,tva:0,ttc:0,items:0};
+              var ttc = it.price*it.qty;
+              var tvaAmt = ttc/(100+rate)*rate;
+              tvaByRate[rate].ttc+=ttc; tvaByRate[rate].tva+=tvaAmt; tvaByRate[rate].ht+=(ttc-tvaAmt); tvaByRate[rate].items+=it.qty;
+            });
+          });
+          var tvaLines = Object.values(tvaByRate).sort(function(a,b){return a.rate-b.rate;});
+          var totalHT = tvaLines.reduce(function(a,l){return a+l.ht;},0);
+          var totalTVA = tvaLines.reduce(function(a,l){return a+l.tva;},0);
+
+          // ── By category ──
+          var byCat = {};
+          periodSales.forEach(function(s){
+            (s.items||[]).forEach(function(it){
+              var catP = catalogue.find(function(c){return c.name===it.name||c.id===it.id;});
+              var cat = catP ? catP.category : "Autre";
+              if(!byCat[cat]) byCat[cat]={cat:cat,ca:0,qty:0};
+              byCat[cat].ca+=it.price*it.qty; byCat[cat].qty+=it.qty;
+            });
+          });
+          var catData = Object.values(byCat).sort(function(a,b){return b.ca-a.ca;});
+          var maxCatCA = catData.length>0 ? catData[0].ca : 1;
+          var catColors = {"Viennoiseries":"#C8953A","Pains":"#8B5CF6","Patisseries":"#EC4899","Tartes":"#10B981","Traiteur":"#3B82F6","Autre":"#8B7355"};
+
+          // ── By product (margin analysis) ──
+          var byProd = {};
+          periodSales.forEach(function(s){
+            (s.items||[]).forEach(function(it){
+              var key = it.name;
+              if(!byProd[key]) byProd[key]={name:key,ca:0,qty:0,cost:0,id:it.id};
+              byProd[key].ca+=it.price*it.qty; byProd[key].qty+=it.qty;
+            });
+          });
+          Object.values(byProd).forEach(function(p){
+            var catP = catalogue.find(function(c){return c.id===p.id||c.name===p.name;});
+            p.cost = catP ? catP.cost*p.qty : 0;
+            p.marge = p.ca>0 ? (p.ca-p.cost)/p.ca*100 : 0;
+            p.emoji = catP ? catP.emoji : "📦";
+          });
+          var prodData = Object.values(byProd).sort(function(a,b){return b.ca-a.ca;});
+
+          // ── Daily CA trend (last N days depending on period) ──
+          var dayCount = reportPeriod==="jour"?1:reportPeriod==="semaine"?7:reportPeriod==="mois"?30:reportPeriod==="trimestre"?90:365;
+          if(reportPeriod==="custom") dayCount = Math.max(1,Math.ceil((periodEnd-periodStart)/(86400000)));
+          dayCount = Math.min(dayCount, 60); // cap at 60 bars
+          var trendData = [];
+          for(var d=dayCount-1; d>=0; d--){
+            var dt=new Date(now); dt.setDate(now.getDate()-d); dt.setHours(0,0,0,0);
+            var ds=dt.toLocaleDateString("fr-CH");
+            var dayCA=fs.filter(function(s){return s.date===ds;}).reduce(function(a,s){return a+s.total;},0);
+            var label = dayCount<=7 ? ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"][dt.getDay()] : dt.getDate()+"/"+(dt.getMonth()+1);
+            trendData.push({label:label, ca:dayCA, date:ds});
+          }
+          var maxDayCA = trendData.reduce(function(m,d){return Math.max(m,d.ca);},1);
+
+          // ── By store ──
+          var storeCA = {};
+          STORES.forEach(function(st){ storeCA[st]=0; });
+          periodSales.forEach(function(s){ if(storeCA[s.store]!==undefined) storeCA[s.store]+=s.total; });
+
+          // ── Export functions ──
+          function exportComptable(){
+            var csv = "Date;Heure;Ticket;Magasin;Vendeuse;Client;Articles;Total TTC;Total HT;TVA;Mode paiement\n";
+            periodSales.forEach(function(s){
+              var tv = s.tvaInfo || computeTVA(s.items);
+              csv += [s.date,s.time,s.id,'"'+s.store+'"',s.seller||"",'"'+s.client+'"',
+                '"'+s.items.map(function(i){return i.qty+"x "+i.name;}).join(", ")+'"',
+                s.total.toFixed(2),tv.totalHT.toFixed(2),(s.total-tv.totalHT).toFixed(2),s.payInfo.method].join(";")+"\n";
+            });
+            var blob = new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+            var a = document.createElement("a"); a.href=URL.createObjectURL(blob);
+            a.download="journal_ventes_"+reportPeriod+"_"+todayS.replace(/\./g,"-")+".csv"; a.click();
+            setSavedMsg("✅ Journal comptable exporté ("+periodSales.length+" lignes)"); setTimeout(function(){ setSavedMsg(""); },3000);
+          }
+
+          function exportTVA(){
+            var csv = "Période;Taux TVA;CA TTC;CA HT;Montant TVA;Nb articles\n";
+            tvaLines.forEach(function(l){
+              csv += [periodLabel,l.rate+"%",l.ttc.toFixed(2),l.ht.toFixed(2),l.tva.toFixed(2),l.items].join(";")+"\n";
+            });
+            csv += [periodLabel,"TOTAL",totalCA.toFixed(2),totalHT.toFixed(2),totalTVA.toFixed(2),""].join(";")+"\n";
+            var blob = new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+            var a = document.createElement("a"); a.href=URL.createObjectURL(blob);
+            a.download="rapport_tva_"+reportPeriod+"_"+todayS.replace(/\./g,"-")+".csv"; a.click();
+            setSavedMsg("✅ Rapport TVA exporté"); setTimeout(function(){ setSavedMsg(""); },3000);
+          }
+
+          function exportMarges(){
+            var csv = "Produit;Catégorie;Qté vendue;CA TTC;Coût total;Marge brute;Marge %\n";
+            prodData.forEach(function(p){
+              var catP = catalogue.find(function(c){return c.name===p.name;});
+              csv += ['"'+p.name+'"',catP?catP.category:"",p.qty,p.ca.toFixed(2),p.cost.toFixed(2),(p.ca-p.cost).toFixed(2),p.marge.toFixed(1)+"%"].join(";")+"\n";
+            });
+            var blob = new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+            var a = document.createElement("a"); a.href=URL.createObjectURL(blob);
+            a.download="marges_produits_"+reportPeriod+"_"+todayS.replace(/\./g,"-")+".csv"; a.click();
+            setSavedMsg("✅ Rapport marges exporté"); setTimeout(function(){ setSavedMsg(""); },3000);
+          }
+
+          // SVG chart dimensions
+          var chartW = 520, chartH = 120, barW = Math.max(4, Math.min(16, (chartW-20)/trendData.length - 2));
+
+          return (
+            <div>
+              {/* Demo data loader + empty state */}
+              {fs.length===0 && (
+                <div style={{background:"linear-gradient(135deg,#FEF3C7,#FDF0D8)",borderRadius:14,padding:"20px 22px",marginBottom:16,border:"2px solid #C8953A",textAlign:"center"}}>
+                  <div style={{fontSize:28,marginBottom:6}}>📊</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#1E0E05",marginBottom:4,fontFamily:"'Outfit',sans-serif"}}>Aucune vente enregistrée</div>
+                  <div style={{fontSize:11,color:"#8B7355",marginBottom:12}}>Chargez les données de démonstration pour voir le rapport en action</div>
+                  <button onClick={loadDemoData}
+                    style={{padding:"10px 24px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1E0E05,#3D2B1A)",color:"#C8953A",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    🔄 Charger 22 ventes + 4 cartes cadeaux de démo
+                  </button>
+                </div>
+              )}
+              {/* Période selector */}
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:.8}}>Période :</span>
+                {[["jour","Jour"],["semaine","Semaine"],["mois","Mois"],["trimestre","Trimestre"],["annee","Année"],["custom","Personnalisé"]].map(function(p){
+                  return (
+                    <button key={p[0]} onClick={function(){ setReportPeriod(p[0]); }}
+                      style={{padding:"6px 14px",borderRadius:8,border:reportPeriod===p[0]?"2px solid #1E0E05":"1px solid #D5C4B0",
+                              background:reportPeriod===p[0]?"#1E0E05":"#fff",color:reportPeriod===p[0]?"#C8953A":"#5C4A32",
+                              fontSize:11,fontWeight:reportPeriod===p[0]?700:400,cursor:"pointer",fontFamily:"'Outfit',sans-serif",transition:"all .15s"}}>
+                      {p[1]}
+                    </button>
+                  );
+                })}
+                {reportPeriod==="custom" && (
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <input type="date" value={reportCustomFrom} onChange={function(e){setReportCustomFrom(e.target.value);}}
+                      style={{padding:"5px 8px",borderRadius:6,border:"1px solid #D5C4B0",fontSize:11,fontFamily:"'Outfit',sans-serif"}} />
+                    <span style={{fontSize:10,color:"#8B7355"}}>→</span>
+                    <input type="date" value={reportCustomTo} onChange={function(e){setReportCustomTo(e.target.value);}}
+                      style={{padding:"5px 8px",borderRadius:6,border:"1px solid #D5C4B0",fontSize:11,fontFamily:"'Outfit',sans-serif"}} />
+                  </div>
+                )}
+                <span style={{fontSize:11,color:"#C8953A",fontWeight:600,marginLeft:8}}>{periodLabel}</span>
+              </div>
+
+              {/* KPIs */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                {[
+                  {l:"CA TTC",v:"CHF "+totalCA.toFixed(2),icon:"💰",bg:"linear-gradient(135deg,#1E0E05,#3D2B1A)",a:"#C8953A"},
+                  {l:"CA HT",v:"CHF "+totalHT.toFixed(2),icon:"📋",bg:"linear-gradient(135deg,#065F46,#059669)",a:"#A7F3D0"},
+                  {l:"Total TVA",v:"CHF "+totalTVA.toFixed(2),icon:"🏛",bg:"linear-gradient(135deg,#7C3AED,#5B21B6)",a:"#E9D5FF"},
+                  {l:"Ticket moyen",v:"CHF "+avgTicket.toFixed(2),icon:"🧾",bg:"linear-gradient(135deg,#1E40AF,#2563EB)",a:"#BFDBFE"},
+                ].map(function(k){
+                  return (
+                    <div key={k.l} className="ch" style={{background:k.bg,borderRadius:14,padding:"16px 14px",boxShadow:"0 4px 16px rgba(0,0,0,.1)"}}>
+                      <div style={{fontSize:22,marginBottom:4}}>{k.icon}</div>
+                      <div style={{fontSize:18,fontWeight:700,color:k.a,fontFamily:"'Outfit',sans-serif",marginBottom:2}}>{k.v}</div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,.42)",textTransform:"uppercase",letterSpacing:.8}}>{k.l}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Exports */}
+              {canExportData && (
+                <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                  <button onClick={exportComptable}
+                    style={{padding:"8px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1E0E05,#3D2B1A)",color:"#FDF8F0",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    📤 Journal comptable CSV
+                  </button>
+                  <button onClick={exportTVA}
+                    style={{padding:"8px 16px",borderRadius:9,border:"2px solid #7C3AED",background:"transparent",color:"#7C3AED",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    🏛 Rapport TVA CSV
+                  </button>
+                  <button onClick={exportMarges}
+                    style={{padding:"8px 16px",borderRadius:9,border:"2px solid #C8953A",background:"transparent",color:"#C8953A",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    📊 Marges produits CSV
+                  </button>
+                  <span style={{alignSelf:"center",fontSize:10,color:"#8B7355"}}>{periodSales.length} ticket(s) · {periodLabel}</span>
+                  <button onClick={loadDemoData} title="Recharger les données de démonstration"
+                    style={{marginLeft:"auto",padding:"6px 12px",borderRadius:7,border:"1px dashed #D5C4B0",background:"transparent",color:"#8B7355",fontSize:10,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    🔄 Réinit. démo
+                  </button>
+                </div>
+              )}
+
+              {/* Graphique CA tendance */}
+              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",marginBottom:16}}>
+                <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>📈 Évolution du chiffre d'affaires en CHF ({periodLabel})</div>
+                {trendData.length<=1 ? (
+                  <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"20px 0"}}>Pas assez de données pour un graphique</div>
+                ) : (
+                  <svg width="100%" viewBox={"0 0 "+(chartW+10)+" "+(chartH+25)} style={{overflow:"visible"}}>
+                    {[0,0.25,0.5,0.75,1].map(function(t){
+                      var y=chartH-t*chartH;
+                      return <g key={t}>
+                        <line x1="0" y1={y} x2={chartW} y2={y} stroke="#F0E8DC" strokeWidth=".5"/>
+                        <text x={chartW+2} y={y+3} fontSize="7" fill="#8B7355">{"CHF "+(maxDayCA*t).toFixed(0)}</text>
+                      </g>;
+                    })}
+                    {trendData.map(function(d,i){
+                      var x = 5 + i*(chartW/trendData.length);
+                      var h = d.ca>0 ? Math.max(2, d.ca/maxDayCA*chartH) : 0;
+                      var isToday = d.date===todayS;
+                      return <g key={i}>
+                        <rect x={x} y={chartH-h} width={barW} height={h} rx="2"
+                          fill={isToday?"#C8953A":"#DBC9A8"} opacity={d.ca>0?1:.3}>
+                          <title>{d.label+" — CHF "+d.ca.toFixed(2)}</title>
+                        </rect>
+                        {d.ca>0 && trendData.length<=15 && (
+                          <text x={x+barW/2} y={chartH-h-3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#1E0E05">{d.ca.toFixed(0)}</text>
+                        )}
+                        {(trendData.length<=15 || i%Math.ceil(trendData.length/15)===0) && (
+                          <text x={x+barW/2} y={chartH+12} textAnchor="middle" fontSize="7" fill="#8B7355">{d.label}</text>
+                        )}
+                      </g>;
+                    })}
+                  </svg>
+                )}
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                {/* Rapport TVA */}
+                <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
+                  <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>🏛 Ventilation TVA suisse</div>
+                  {tvaLines.length===0 ? (
+                    <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune donnée</div>
+                  ) : (
+                    <div>
+                      {tvaLines.map(function(l){
+                        var pct = totalCA>0 ? l.ttc/totalCA*100 : 0;
+                        var rateLabel = l.rate===2.6 ? "Alimentaire" : l.rate===8.1 ? "Restauration" : l.rate+"%";
+                        return (
+                          <div key={l.rate} style={{background:"#F7F3EE",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                              <div>
+                                <span style={{fontSize:13,fontWeight:700,color:"#1E0E05"}}>{l.rate}%</span>
+                                <span style={{fontSize:10,color:"#8B7355",marginLeft:6}}>{rateLabel}</span>
+                              </div>
+                              <span style={{fontSize:10,color:"#8B7355"}}>{l.items} articles · {pct.toFixed(0)}% du CA</span>
+                            </div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                              <div><div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase"}}>TTC</div><div style={{fontSize:12,fontWeight:700,color:"#1E0E05"}}>CHF {l.ttc.toFixed(2)}</div></div>
+                              <div><div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase"}}>HT</div><div style={{fontSize:12,fontWeight:700,color:"#065F46"}}>CHF {l.ht.toFixed(2)}</div></div>
+                              <div><div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase"}}>TVA due</div><div style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>CHF {l.tva.toFixed(2)}</div></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:0,borderRadius:10,overflow:"hidden",border:"2px solid #1E0E05",marginTop:4}}>
+                        <div style={{background:"#FDF8F0",padding:"14px 16px",textAlign:"center",borderRight:"1px solid #EDE0D0"}}>
+                          <div style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:.8,marginBottom:4}}>Total TTC</div>
+                          <div style={{fontSize:18,fontWeight:800,color:"#1E0E05",fontFamily:"'Outfit',sans-serif"}}>CHF {totalCA.toFixed(2)}</div>
+                        </div>
+                        <div style={{background:"#FDF8F0",padding:"14px 16px",textAlign:"center",borderRight:"1px solid #EDE0D0"}}>
+                          <div style={{fontSize:10,color:"#8B7355",textTransform:"uppercase",letterSpacing:.8,marginBottom:4}}>Total HT</div>
+                          <div style={{fontSize:18,fontWeight:800,color:"#065F46",fontFamily:"'Outfit',sans-serif"}}>CHF {totalHT.toFixed(2)}</div>
+                        </div>
+                        <div style={{background:"#F3E8FF",padding:"14px 16px",textAlign:"center"}}>
+                          <div style={{fontSize:10,color:"#5B21B6",textTransform:"uppercase",letterSpacing:.8,marginBottom:4,fontWeight:700}}>TVA due</div>
+                          <div style={{fontSize:18,fontWeight:800,color:"#5B21B6",fontFamily:"'Outfit',sans-serif"}}>CHF {totalTVA.toFixed(2)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* CA par catégorie */}
+                <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
+                  <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>📦 CA par catégorie</div>
+                  {catData.length===0 ? (
+                    <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune donnée</div>
+                  ) : catData.map(function(c){
+                    var pct = c.ca/maxCatCA*100;
+                    var color = catColors[c.cat]||"#8B7355";
+                    return (
+                      <div key={c.cat} style={{marginBottom:10}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                          <span style={{color:"#5C4A32",fontWeight:600}}>{c.cat}</span>
+                          <span style={{fontWeight:700,color:color}}>CHF {c.ca.toFixed(2)} · {c.qty} pcs</span>
+                        </div>
+                        <div style={{height:8,background:"#F0E8DC",borderRadius:4,overflow:"hidden"}}>
+                          <div style={{width:pct+"%",height:"100%",background:color,borderRadius:4,transition:"width .4s ease"}} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* CA par magasin */}
+                  {storeFilter==="all" && (
+                    <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #F0E8DC"}}>
+                      <div style={{fontWeight:600,color:"#1E0E05",fontSize:11,marginBottom:8}}>🏪 Par magasin</div>
+                      {STORES.map(function(st){
+                        var ca = storeCA[st]||0;
+                        var pct = totalCA>0 ? ca/totalCA*100 : 0;
+                        return (
+                          <div key={st} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                            <span style={{fontSize:10,color:"#5C4A32",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{st}</span>
+                            <span style={{fontSize:11,fontWeight:700,color:"#C8953A",flexShrink:0}}>CHF {ca.toFixed(2)}</span>
+                            <span style={{fontSize:9,color:"#8B7355",flexShrink:0}}>({pct.toFixed(0)}%)</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Analyse marges par produit */}
+              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{fontWeight:600,color:"#1E0E05",fontSize:12}}>📊 Analyse marges par produit</div>
+                  <span style={{fontSize:9,color:"#8B7355"}}>{prodData.length} produits vendus</span>
+                </div>
+                {prodData.length===0 ? (
+                  <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"16px 0"}}>Aucune vente sur cette période</div>
+                ) : (
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                      <thead>
+                        <tr style={{background:"#F7F3EE"}}>
+                          <th style={{padding:"8px 6px",textAlign:"left",color:"#5C4A32",fontWeight:700,fontSize:10}}>Produit</th>
+                          <th style={{padding:"8px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>Qté</th>
+                          <th style={{padding:"8px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>CA TTC</th>
+                          {canViewCost && <th style={{padding:"8px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>Coût</th>}
+                          {canViewCost && <th style={{padding:"8px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>Marge</th>}
+                          {canViewCost && <th style={{padding:"8px 6px",textAlign:"right",color:"#5C4A32",fontWeight:700,fontSize:10}}>Marge %</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {prodData.map(function(p,idx){
+                          var margeColor = p.marge>=50?"#065F46":p.marge>=30?"#92400E":"#DC2626";
+                          var margeBg = p.marge>=50?"#D1FAE5":p.marge>=30?"#FEF3C7":"#FEE2E2";
+                          return (
+                            <tr key={p.name} className="tr" style={{borderBottom:"1px solid #F7F3EE"}}>
+                              <td style={{padding:"7px 6px"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{fontSize:14}}>{p.emoji}</span>
+                                  <span style={{fontWeight:600,color:"#1E0E05"}}>{p.name}</span>
+                                </div>
+                              </td>
+                              <td style={{padding:"7px 6px",textAlign:"right",color:"#5C4A32"}}>{p.qty}</td>
+                              <td style={{padding:"7px 6px",textAlign:"right",fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {p.ca.toFixed(2)}</td>
+                              {canViewCost && <td style={{padding:"7px 6px",textAlign:"right",color:"#8B7355"}}>CHF {p.cost.toFixed(2)}</td>}
+                              {canViewCost && <td style={{padding:"7px 6px",textAlign:"right",fontWeight:600,color:margeColor}}>CHF {(p.ca-p.cost).toFixed(2)}</td>}
+                              {canViewCost && <td style={{padding:"7px 6px",textAlign:"right"}}>
+                                <span style={{fontSize:9,fontWeight:700,color:margeColor,background:margeBg,padding:"2px 8px",borderRadius:8}}>{p.marge.toFixed(1)}%</span>
+                              </td>}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      {canViewCost && (
+                        <tfoot>
+                          <tr style={{background:"#F7F3EE",fontWeight:700}}>
+                            <td style={{padding:"8px 6px",color:"#1E0E05"}}>TOTAL</td>
+                            <td style={{padding:"8px 6px",textAlign:"right",color:"#1E0E05"}}>{prodData.reduce(function(a,p){return a+p.qty;},0)}</td>
+                            <td style={{padding:"8px 6px",textAlign:"right",color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {totalCA.toFixed(2)}</td>
+                            <td style={{padding:"8px 6px",textAlign:"right",color:"#8B7355"}}>CHF {prodData.reduce(function(a,p){return a+p.cost;},0).toFixed(2)}</td>
+                            <td style={{padding:"8px 6px",textAlign:"right",color:"#065F46"}}>CHF {(totalCA-prodData.reduce(function(a,p){return a+p.cost;},0)).toFixed(2)}</td>
+                            <td style={{padding:"8px 6px",textAlign:"right"}}>
+                              {(function(){ var tc=prodData.reduce(function(a,p){return a+p.cost;},0); var m=totalCA>0?(totalCA-tc)/totalCA*100:0;
+                                return <span style={{fontSize:9,fontWeight:700,color:m>=50?"#065F46":"#92400E",background:m>=50?"#D1FAE5":"#FEF3C7",padding:"2px 8px",borderRadius:8}}>{m.toFixed(1)}%</span>;
+                              })()}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     </div>
