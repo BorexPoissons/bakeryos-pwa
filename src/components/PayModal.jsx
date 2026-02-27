@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { computeTVA } from "../utils.js";
 
 export default function PayModal(props) {
@@ -107,8 +107,7 @@ export default function PayModal(props) {
             </div>
             <div style={{display:"flex",gap:10,marginTop:4}}>
               {tvaData.lines.map(function(l){
-                return React.createElement("span",{key:l.rate,style:{fontSize:9,color:"rgba(253,248,240,.45)"}},
-                  "TVA "+l.rate+"% : "+l.tva.toFixed(2));
+                return <span key={l.rate} style={{fontSize:9,color:"rgba(253,248,240,.45)"}}>TVA {l.rate}% : {l.tva.toFixed(2)}</span>;
               })}
             </div>
           </div>
