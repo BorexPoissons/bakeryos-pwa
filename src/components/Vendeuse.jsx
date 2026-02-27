@@ -138,17 +138,38 @@ export default function Vendeuse(props) {
 
   // ── Charger une table dans le panier POS ──
   function loadTable(t) {
-    // Si on travaille déjà sur une table, sauvegarder d'abord
-    if (activeTable && cart.length > 0) {
-      saveToTable(activeTable, cart);
-    }
     var key = myStore+"_"+t.id;
     var sess = tableSessions[key];
-    if (sess && sess.cart && sess.cart.length > 0) {
-      setCart(sess.cart.slice());
-      setClient("Table "+t.name);
+    var tableHasItems = sess && sess.cart && sess.cart.length > 0;
+
+    // Si on travaille déjà sur une autre table, sauvegarder d'abord
+    if (activeTable && activeTable.id !== t.id && cart.length > 0) {
+      saveToTable(activeTable, cart);
+    }
+
+    if (tableHasItems) {
+      // La table a déjà des articles → les charger
+      // Si le panier courant avait des articles SANS table active, les fusionner
+      if (!activeTable && cart.length > 0) {
+        var merged = sess.cart.slice();
+        cart.forEach(function(ci) {
+          var existing = merged.find(function(m){ return m.id === ci.id; });
+          if (existing) existing.qty += ci.qty;
+          else merged.push(Object.assign({}, ci));
+        });
+        setCart(merged);
+      } else {
+        setCart(sess.cart.slice());
+      }
+      setClient(sess.client || "Table "+t.name);
     } else {
-      setCart([]);
+      // Table vide → transférer le panier courant sur cette table
+      // (ne pas vider le panier si l'utilisateur avait déjà des articles)
+      if (!activeTable && cart.length > 0) {
+        // Garder le panier tel quel, juste l'assigner à la table
+      } else {
+        setCart([]);
+      }
       setClient("Table "+t.name);
     }
     setActiveTable(t);
@@ -324,7 +345,7 @@ export default function Vendeuse(props) {
       seller:        userName,
       client:        ticketClient,
       mode:          (saleData && saleData.mode) || null,
-      table:         activeTable ? ("Table " + activeTable) : null,
+      table:         activeTable ? ("Table " + activeTable.name) : null,
       items:         items.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price,emoji:i.emoji,tva:i.tva||2.6}; }),
       total:         ticketTotal,
       tvaInfo:       tv,
