@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 /* ─── VERSION & UPDATE ───────────────────────────────────────── */
-const APP_VERSION = "3.7.0";
+const APP_VERSION = "3.8.0";
 
 /* ─── CONSTANTES ──────────────────────────────────────────────── */
 const PRODUCTS = [
@@ -63,6 +63,7 @@ const PERMS_DEF = {
     { id:"abonnements",   label:"🔄 Abonnements",        group:"adminTabs" },
     { id:"planning",      label:"🏭 Planning production",  group:"adminTabs" },
     { id:"reporting",     label:"📊 Rapport",               group:"adminTabs" },
+    { id:"imprimante",    label:"🖨 Imprimante",            group:"adminTabs" },
   ],
   // Fonctionnalités
   features: [
@@ -75,14 +76,15 @@ const PERMS_DEF = {
     { id:"export_data",      label:"📤 Exporter données / CSV",         group:"features" },
     { id:"manage_subscriptions", label:"🔄 Gérer les abonnements",     group:"features" },
     { id:"manage_recipes",       label:"📖 Gérer les fiches recettes", group:"features" },
+    { id:"manage_printer",       label:"🖨 Gérer l'imprimante",       group:"features" },
   ],
 };
 
 // Permissions par défaut selon le rôle
 function defaultPerms(role) {
   switch(role) {
-    case "admin":      return { screens:["vendeuse","production","livreur","gerant","admin"], adminTabs:["dashboard","commandes","catalogue","gestion","utilisateurs","supervision","cartes","abonnements","planning","reporting"], features:["create_order","edit_catalogue","view_cost","chat","edit_logo","manage_staff","export_data","manage_subscriptions","manage_recipes"] };
-    case "gerant":     return { screens:["gerant"], adminTabs:["dashboard","commandes","catalogue","gestion","abonnements","planning","reporting"], features:["create_order","chat","manage_staff","manage_subscriptions"] };
+    case "admin":      return { screens:["vendeuse","production","livreur","gerant","admin"], adminTabs:["dashboard","commandes","catalogue","gestion","utilisateurs","supervision","cartes","abonnements","planning","reporting","imprimante"], features:["create_order","edit_catalogue","view_cost","chat","edit_logo","manage_staff","export_data","manage_subscriptions","manage_recipes","manage_printer"] };
+    case "gerant":     return { screens:["gerant"], adminTabs:["dashboard","commandes","catalogue","gestion","abonnements","planning","reporting","imprimante"], features:["create_order","chat","manage_staff","manage_subscriptions","manage_printer"] };
     case "vendeuse":   return { screens:["vendeuse"], adminTabs:[], features:["chat"] };
     case "production": return { screens:["production"], adminTabs:[], features:["chat"] };
     case "livreur":    return { screens:["livreur"], adminTabs:[], features:[] };
@@ -333,6 +335,352 @@ function computeTVA(items) {
   return { lines:lines, totalHT:Math.round(totalHT*100)/100, totalTVA:Math.round(totalTVA*100)/100, totalTTC:Math.round(totalTTC*100)/100 };
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   ESC/POS PRINTER ENGINE — Web Serial API + HTML fallback
+   Compatible: Epson TM-T20/T88, Star TSP, Bixolon, etc.
+   ═══════════════════════════════════════════════════════════════ */
+
+var ESC=0x1B, GS=0x1D, LF=0x0A;
+var ESCCMD={
+  INIT:[ESC,0x40], LF:[LF], CUT:[GS,0x56,0x41,0x03],
+  ALIGN_L:[ESC,0x61,0x00], ALIGN_C:[ESC,0x61,0x01], ALIGN_R:[ESC,0x61,0x02],
+  BOLD_ON:[ESC,0x45,0x01], BOLD_OFF:[ESC,0x45,0x00],
+  DBL_ON:[ESC,0x21,0x30],  DBL_OFF:[ESC,0x21,0x00],
+  FONT_B:[ESC,0x4D,0x01],  FONT_A:[ESC,0x4D,0x00],
+  DRAWER:[ESC,0x70,0x00,0x19,0xFA], BEEP:[ESC,0x42,0x03,0x02],
+};
+var PAPER={"80mm":{chars:48,name:"80mm"},"58mm":{chars:32,name:"58mm"}};
+
+function textToBytes(str){
+  var bytes=[],map={0xE0:0x85,0xE2:0x83,0xE7:0x87,0xE8:0x8A,0xE9:0x82,0xEA:0x88,
+    0xEB:0x89,0xEE:0x8C,0xEF:0x8B,0xF4:0x93,0xF9:0x97,0xFB:0x96,0xFC:0x81,0xC9:0x90,0xC0:0xB7,0xC8:0xD4};
+  for(var i=0;i<str.length;i++){var c=str.charCodeAt(i);bytes.push(c<128?c:(map[c]||0x3F));}
+  return bytes;
+}
+function padLine(l,r,w){var s=w-l.length-r.length;return l+(" ".repeat(Math.max(1,s)))+r;}
+function dashLine(w){return "-".repeat(w);}
+function dblLine(w){return "=".repeat(w);}
+
+var PrinterService={
+  _port:null,_writer:null,_connected:false,_config:null,
+  DEFAULT_CONFIG:{paperWidth:"80mm",baudRate:9600,autoCut:true,openDrawer:false,beepOnPrint:false,
+    headerLines:[],footerLines:["Merci de votre visite !"],tvaNumber:"",copies:1,feedLines:3},
+  loadConfig:function(){
+    try{var s=localStorage.getItem("bakery_printer_config");
+      this._config=Object.assign({},this.DEFAULT_CONFIG,s?JSON.parse(s):{});
+    }catch(e){this._config=Object.assign({},this.DEFAULT_CONFIG);}
+    return this._config;
+  },
+  saveConfig:function(c){
+    this._config=Object.assign({},this.DEFAULT_CONFIG,c);
+    try{localStorage.setItem("bakery_printer_config",JSON.stringify(this._config));}catch(e){}
+    return this._config;
+  },
+  getConfig:function(){if(!this._config)this.loadConfig();return this._config;},
+  isSupported:function(){return "serial" in navigator;},
+  connect:async function(opts){
+    if(!this.isSupported())throw new Error("Web Serial API non supportée. Utilisez Chrome ou Edge.");
+    try{
+      this._port=await navigator.serial.requestPort();
+      var cfg=this.getConfig();
+      await this._port.open({baudRate:(opts&&opts.baudRate)||cfg.baudRate||9600});
+      this._writer=this._port.writable.getWriter();
+      this._connected=true;
+      await this._send(ESCCMD.INIT);
+      await this._send([ESC,0x74,16]);
+      return{success:true};
+    }catch(err){
+      this._connected=false;
+      if(err.name==="NotFoundError")throw new Error("Aucune imprimante sélectionnée");
+      throw new Error("Connexion échouée: "+err.message);
+    }
+  },
+  disconnect:async function(){
+    try{if(this._writer){await this._writer.close();this._writer=null;}
+      if(this._port){await this._port.close();this._port=null;}}catch(e){}
+    this._connected=false;
+  },
+  isConnected:function(){return this._connected&&this._port!==null;},
+  _send:async function(d){if(!this._writer)throw new Error("Non connectée");await this._writer.write(d instanceof Uint8Array?d:new Uint8Array(d));},
+  _text:async function(s){var b=textToBytes(s);b.push(LF);await this._send(b);},
+  openDrawer:async function(){if(this.isConnected())await this._send(ESCCMD.DRAWER);},
+
+  printTest:async function(){
+    var c=this.getConfig(),w=PAPER[c.paperWidth].chars;
+    await this._send(ESCCMD.INIT);await this._send([ESC,0x74,16]);
+    await this._send(ESCCMD.ALIGN_C);await this._send(ESCCMD.DBL_ON);await this._text("TEST IMPRIMANTE");await this._send(ESCCMD.DBL_OFF);
+    await this._send(ESCCMD.ALIGN_L);await this._text(dashLine(w));
+    await this._text("BakeryOS ESC/POS v3.8");await this._text("Largeur: "+c.paperWidth+" ("+w+" car.)");
+    await this._text("Accents: éèàùçôî");await this._text(dashLine(w));
+    await this._send(ESCCMD.ALIGN_C);await this._text(new Date().toLocaleString("fr-CH"));await this._text("OK !");
+    await this._send(ESCCMD.ALIGN_L);
+    for(var i=0;i<(c.feedLines||3);i++)await this._send(ESCCMD.LF);
+    if(c.autoCut)await this._send(ESCCMD.CUT);
+    return{success:true};
+  },
+
+  printReceipt:async function(r){
+    var c=this.getConfig(),w=PAPER[c.paperWidth].chars;
+    for(var copy=0;copy<(c.copies||1);copy++){
+      await this._send(ESCCMD.INIT);await this._send([ESC,0x74,16]);
+      await this._send(ESCCMD.ALIGN_C);await this._send(ESCCMD.DBL_ON);
+      await this._text(r.tenant||"BakeryOS");await this._send(ESCCMD.DBL_OFF);
+      if(r.storeAddress)await this._text(r.storeAddress);
+      if(c.tvaNumber){await this._send(ESCCMD.FONT_B);await this._text(c.tvaNumber);await this._send(ESCCMD.FONT_A);}
+      if(c.headerLines)for(var h=0;h<c.headerLines.length;h++)await this._text(c.headerLines[h]);
+      await this._send(ESCCMD.ALIGN_L);await this._text(dblLine(w));
+      await this._text(padLine("Ticket: "+(r.ticketNumber||"---"),r.time||"",w));
+      if(r.seller)await this._text("Vendeur: "+r.seller);
+      if(r.client&&r.client!=="Client")await this._text("Client: "+r.client);
+      var ml={surplace:"Sur place",emporter:"A emporter",livraison:"Livraison"};
+      if(r.mode)await this._text("Mode: "+(ml[r.mode]||r.mode));
+      if(r.table)await this._text("Table: "+r.table);
+      await this._text(dashLine(w));
+      for(var i=0;i<r.items.length;i++){
+        var it=r.items[i],lt=(it.price*it.qty).toFixed(2),il=it.qty+"x "+it.name,pp="CHF "+lt;
+        if(il.length+pp.length+1>w){await this._text(il);await this._send(ESCCMD.ALIGN_R);await this._text(pp);await this._send(ESCCMD.ALIGN_L);}
+        else await this._text(padLine(il,pp,w));
+        if(it.qty>1){await this._send(ESCCMD.FONT_B);await this._text("   @ CHF "+it.price.toFixed(2));await this._send(ESCCMD.FONT_A);}
+      }
+      await this._text(dashLine(w));
+      if(r.tvaInfo&&r.tvaInfo.lines){
+        await this._send(ESCCMD.FONT_B);
+        for(var t=0;t<r.tvaInfo.lines.length;t++){var tl=r.tvaInfo.lines[t];await this._text(padLine("TVA "+tl.rate+"% (HT "+tl.ht.toFixed(2)+")","CHF "+tl.tva.toFixed(2),w));}
+        await this._text(padLine("Total HT","CHF "+r.tvaInfo.totalHT.toFixed(2),w));
+        await this._send(ESCCMD.FONT_A);await this._text(dashLine(w));
+      }
+      await this._send(ESCCMD.BOLD_ON);await this._send(ESCCMD.DBL_ON);await this._send(ESCCMD.ALIGN_R);
+      await this._text("CHF "+r.total.toFixed(2));
+      await this._send(ESCCMD.DBL_OFF);await this._send(ESCCMD.BOLD_OFF);await this._send(ESCCMD.ALIGN_L);
+      await this._text(dashLine(w));
+      if(r.payInfo){
+        var pl={card:"Carte bancaire",cash:"Especes",mixed:"Paiement mixte",giftcard:"Carte cadeau"};
+        await this._text("Paiement: "+(pl[r.payInfo.method]||r.payInfo.method));
+        if(r.payInfo.given)await this._text(padLine("Recu","CHF "+r.payInfo.given.toFixed(2),w));
+        if(r.payInfo.change>0){await this._send(ESCCMD.BOLD_ON);await this._text(padLine("Rendu","CHF "+r.payInfo.change.toFixed(2),w));await this._send(ESCCMD.BOLD_OFF);}
+      }
+      if(r.note){await this._text(dashLine(w));await this._send(ESCCMD.FONT_B);await this._text("Note: "+r.note);await this._send(ESCCMD.FONT_A);}
+      await this._text(dashLine(w));await this._send(ESCCMD.ALIGN_C);await this._send(ESCCMD.FONT_B);
+      if(c.footerLines)for(var f=0;f<c.footerLines.length;f++)await this._text(c.footerLines[f]);
+      await this._text(new Date().toLocaleString("fr-CH"));
+      await this._send(ESCCMD.FONT_A);await this._send(ESCCMD.ALIGN_L);
+      for(var fl=0;fl<(c.feedLines||3);fl++)await this._send(ESCCMD.LF);
+      if(c.autoCut)await this._send(ESCCMD.CUT);
+      if(c.beepOnPrint)await this._send(ESCCMD.BEEP);
+      if(c.openDrawer&&r.payInfo&&r.payInfo.method==="cash")await this._send(ESCCMD.DRAWER);
+    }
+    return{success:true};
+  },
+
+  printZReport:async function(rp){
+    var c=this.getConfig(),w=PAPER[c.paperWidth].chars;
+    await this._send(ESCCMD.INIT);await this._send([ESC,0x74,16]);
+    await this._send(ESCCMD.ALIGN_C);await this._send(ESCCMD.DBL_ON);await this._text("RAPPORT Z");await this._send(ESCCMD.DBL_OFF);
+    await this._text(rp.tenant||"BakeryOS");if(rp.store)await this._text(rp.store);
+    await this._send(ESCCMD.ALIGN_L);await this._text(dblLine(w));
+    await this._text(padLine("Date",rp.date||new Date().toLocaleDateString("fr-CH"),w));
+    await this._text(padLine("Ouverture",rp.openTime||"---",w));
+    await this._text(padLine("Fermeture",rp.closeTime||"",w));
+    if(rp.seller)await this._text(padLine("Caissier",rp.seller,w));
+    await this._text(dashLine(w));
+    await this._send(ESCCMD.BOLD_ON);await this._text("VENTES");await this._send(ESCCMD.BOLD_OFF);
+    await this._text(padLine("Tickets",String(rp.ticketCount||0),w));
+    await this._text(padLine("Ticket moyen","CHF "+(rp.avgTicket||0).toFixed(2),w));
+    await this._send(ESCCMD.BOLD_ON);await this._text(padLine("TOTAL CA TTC","CHF "+(rp.totalCA||0).toFixed(2),w));await this._send(ESCCMD.BOLD_OFF);
+    await this._text(dashLine(w));
+    if(rp.payments){
+      await this._send(ESCCMD.BOLD_ON);await this._text("PAIEMENTS");await this._send(ESCCMD.BOLD_OFF);
+      var pl={card:"Carte",cash:"Especes",giftcard:"Carte cadeau",mixed:"Mixte"};
+      Object.keys(rp.payments).forEach(function(k){/* sync for ESC: we queue */});
+      // Use for loop for async
+      var pk=Object.keys(rp.payments);
+      for(var pi=0;pi<pk.length;pi++)await this._text(padLine("  "+({"card":"Carte","cash":"Especes","giftcard":"Carte cadeau","mixed":"Mixte"}[pk[pi]]||pk[pi]),"CHF "+rp.payments[pk[pi]].toFixed(2),w));
+      await this._text(dashLine(w));
+    }
+    if(rp.tva){
+      await this._send(ESCCMD.BOLD_ON);await this._text("TVA");await this._send(ESCCMD.BOLD_OFF);
+      for(var ti=0;ti<rp.tva.length;ti++)await this._text(padLine("  TVA "+rp.tva[ti].rate+"%","CHF "+rp.tva[ti].amount.toFixed(2),w));
+      if(rp.totalHT!==undefined)await this._text(padLine("  Total HT","CHF "+rp.totalHT.toFixed(2),w));
+      await this._text(dashLine(w));
+    }
+    if(rp.cashCount){
+      await this._send(ESCCMD.BOLD_ON);await this._text("CAISSE");await this._send(ESCCMD.BOLD_OFF);
+      await this._text(padLine("Fond","CHF "+(rp.cashCount.openAmount||0).toFixed(2),w));
+      await this._text(padLine("Especes","CHF "+(rp.cashCount.cashSales||0).toFixed(2),w));
+      await this._text(padLine("Theorique","CHF "+(rp.cashCount.expected||0).toFixed(2),w));
+      await this._text(padLine("Compte","CHF "+(rp.cashCount.counted||0).toFixed(2),w));
+      var diff=(rp.cashCount.counted||0)-(rp.cashCount.expected||0);
+      await this._send(ESCCMD.BOLD_ON);await this._text(padLine("Ecart",(diff>=0?"+":"")+"CHF "+diff.toFixed(2),w));await this._send(ESCCMD.BOLD_OFF);
+    }
+    if(c.tvaNumber){await this._text(dashLine(w));await this._send(ESCCMD.FONT_B);await this._send(ESCCMD.ALIGN_C);await this._text(c.tvaNumber);await this._send(ESCCMD.ALIGN_L);await this._send(ESCCMD.FONT_A);}
+    await this._text(dblLine(w));await this._send(ESCCMD.ALIGN_C);await this._send(ESCCMD.FONT_B);
+    await this._text("Imprime le "+new Date().toLocaleString("fr-CH"));
+    await this._send(ESCCMD.FONT_A);await this._send(ESCCMD.ALIGN_L);
+    for(var i=0;i<(c.feedLines||3);i++)await this._send(ESCCMD.LF);
+    if(c.autoCut)await this._send(ESCCMD.CUT);
+    return{success:true};
+  },
+
+  printKitchenOrder:async function(o){
+    var c=this.getConfig(),w=PAPER[c.paperWidth].chars;
+    await this._send(ESCCMD.INIT);await this._send([ESC,0x74,16]);
+    await this._send(ESCCMD.ALIGN_C);await this._send(ESCCMD.DBL_ON);await this._text("BON PRODUCTION");await this._send(ESCCMD.DBL_OFF);
+    await this._send(ESCCMD.ALIGN_L);await this._text(dblLine(w));
+    await this._send(ESCCMD.BOLD_ON);await this._text(padLine(o.id||"---",o.time||"",w));await this._send(ESCCMD.BOLD_OFF);
+    if(o.client)await this._text("Client: "+o.client);
+    if(o.store)await this._text("Magasin: "+o.store);
+    if(o.priority==="urgent"){await this._send(ESCCMD.DBL_ON);await this._send(ESCCMD.ALIGN_C);await this._text("*** URGENT ***");await this._send(ESCCMD.DBL_OFF);await this._send(ESCCMD.ALIGN_L);}
+    await this._text(dashLine(w));
+    for(var i=0;i<o.items.length;i++){await this._send(ESCCMD.BOLD_ON);await this._send(ESCCMD.DBL_ON);await this._text(o.items[i].qty+"x "+o.items[i].name);await this._send(ESCCMD.DBL_OFF);await this._send(ESCCMD.BOLD_OFF);}
+    if(o.note){await this._text(dashLine(w));await this._send(ESCCMD.BOLD_ON);await this._text("NOTE: "+o.note);await this._send(ESCCMD.BOLD_OFF);}
+    if(o.dMethod==="livreur"){await this._text(dashLine(w));await this._text("LIVRAISON");if(o.dest)await this._text("Adresse: "+o.dest);if(o.driver)await this._text("Chauffeur: "+o.driver);}
+    await this._text(dblLine(w));await this._send(ESCCMD.ALIGN_C);await this._send(ESCCMD.FONT_B);
+    await this._text(new Date().toLocaleString("fr-CH"));await this._send(ESCCMD.FONT_A);await this._send(ESCCMD.ALIGN_L);
+    for(var fl=0;fl<(c.feedLines||3);fl++)await this._send(ESCCMD.LF);
+    if(c.autoCut)await this._send(ESCCMD.CUT);
+    if(c.beepOnPrint)await this._send(ESCCMD.BEEP);
+    return{success:true};
+  },
+};
+
+/* ── HTML Fallback Printer ────────────────────────────────────── */
+var FallbackPrinter={
+  _receiptHTML:function(r,c){
+    var tv=c&&c.tvaNumber||"",fl=c&&c.footerLines||["Merci de votre visite !"];
+    var h='<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+
+      '@page{margin:0;size:80mm auto}body{font-family:"Courier New",monospace;font-size:12px;padding:6px;max-width:72mm;margin:0 auto;color:#000}'+
+      '.c{text-align:center}.r{text-align:right}.b{font-weight:bold}.big{font-size:18px}'+
+      '.line{display:flex;justify-content:space-between;margin:1px 0}.sep{border-top:1px dashed #000;margin:5px 0}'+
+      '.dsep{border-top:2px solid #000;margin:5px 0}.sm{font-size:9px;color:#444}</style></head><body>';
+    h+='<div class="c b big">'+(r.tenant||"BakeryOS")+'</div>';
+    if(r.storeAddress)h+='<div class="c sm">'+r.storeAddress+'</div>';
+    if(tv)h+='<div class="c sm">'+tv+'</div>';
+    if(c&&c.headerLines)c.headerLines.forEach(function(l){h+='<div class="c sm">'+l+'</div>';});
+    h+='<div class="dsep"></div>';
+    h+='<div class="line"><span>Ticket: '+(r.ticketNumber||"---")+'</span><span>'+(r.time||"")+'</span></div>';
+    if(r.seller)h+='<div>Vendeur: '+r.seller+'</div>';
+    if(r.client&&r.client!=="Client")h+='<div>Client: '+r.client+'</div>';
+    if(r.mode){var ml={surplace:"Sur place",emporter:"\u00c0 emporter",livraison:"Livraison"};h+='<div>Mode: '+(ml[r.mode]||r.mode)+'</div>';}
+    if(r.table)h+='<div>Table: '+r.table+'</div>';
+    h+='<div class="sep"></div>';
+    (r.items||[]).forEach(function(it){
+      h+='<div class="line"><span>'+it.qty+'\u00d7 '+it.name+'</span><span>CHF '+(it.price*it.qty).toFixed(2)+'</span></div>';
+      if(it.qty>1)h+='<div class="sm">&nbsp;&nbsp;&nbsp;@ CHF '+it.price.toFixed(2)+'</div>';
+    });
+    h+='<div class="sep"></div>';
+    if(r.tvaInfo&&r.tvaInfo.lines){
+      r.tvaInfo.lines.forEach(function(l){h+='<div class="line sm"><span>TVA '+l.rate+'% (HT '+l.ht.toFixed(2)+')</span><span>CHF '+l.tva.toFixed(2)+'</span></div>';});
+      h+='<div class="line sm"><span>Total HT</span><span>CHF '+r.tvaInfo.totalHT.toFixed(2)+'</span></div><div class="sep"></div>';
+    }
+    h+='<div class="line b big"><span>TOTAL TTC</span><span>CHF '+r.total.toFixed(2)+'</span></div><div class="sep"></div>';
+    if(r.payInfo){
+      var pl={card:"Carte bancaire",cash:"Esp\u00e8ces",mixed:"Paiement mixte",giftcard:"Carte cadeau"};
+      h+='<div>Paiement: '+(pl[r.payInfo.method]||r.payInfo.method)+'</div>';
+      if(r.payInfo.given)h+='<div class="line"><span>Re\u00e7u</span><span>CHF '+r.payInfo.given.toFixed(2)+'</span></div>';
+      if(r.payInfo.change>0)h+='<div class="line b"><span>Rendu</span><span>CHF '+r.payInfo.change.toFixed(2)+'</span></div>';
+    }
+    if(r.note)h+='<div class="sep"></div><div class="sm">Note: '+r.note+'</div>';
+    h+='<div class="sep"></div><div class="c sm">'+fl.join('<br>')+'</div>';
+    h+='<div class="c sm">'+new Date().toLocaleString("fr-CH")+'</div></body></html>';
+    return h;
+  },
+  printReceipt:function(r,c){
+    var w=window.open("","_blank","width=320,height=700");
+    if(!w)return{success:false,error:"popup_blocked"};
+    w.document.write(this._receiptHTML(r,c));w.document.close();
+    setTimeout(function(){w.print();},400);return{success:true,fallback:true};
+  },
+  printZReport:function(rp,c){
+    var tv=c&&c.tvaNumber||"";
+    var h='<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{margin:0;size:80mm auto}body{font-family:"Courier New",monospace;font-size:11px;padding:6px;max-width:72mm;margin:0 auto}.c{text-align:center}.b{font-weight:bold}.big{font-size:16px}.line{display:flex;justify-content:space-between;margin:1px 0}.sep{border-top:1px dashed #000;margin:5px 0}.dsep{border-top:2px solid #000;margin:5px 0}.sm{font-size:9px;color:#444}</style></head><body>';
+    h+='<div class="c b big">RAPPORT Z</div><div class="c b">'+(rp.tenant||"BakeryOS")+'</div>';
+    if(rp.store)h+='<div class="c">'+rp.store+'</div>';
+    h+='<div class="dsep"></div>';
+    h+='<div class="line"><span>Date</span><span>'+(rp.date||new Date().toLocaleDateString("fr-CH"))+'</span></div>';
+    h+='<div class="line"><span>Ouverture</span><span>'+(rp.openTime||"---")+'</span></div>';
+    h+='<div class="line"><span>Fermeture</span><span>'+(rp.closeTime||"---")+'</span></div>';
+    if(rp.seller)h+='<div class="line"><span>Caissier</span><span>'+rp.seller+'</span></div>';
+    h+='<div class="sep"></div><div class="b">VENTES</div>';
+    h+='<div class="line"><span>Tickets</span><span>'+(rp.ticketCount||0)+'</span></div>';
+    h+='<div class="line"><span>Ticket moyen</span><span>CHF '+(rp.avgTicket||0).toFixed(2)+'</span></div>';
+    h+='<div class="line b big"><span>TOTAL CA TTC</span><span>CHF '+(rp.totalCA||0).toFixed(2)+'</span></div><div class="sep"></div>';
+    if(rp.payments){h+='<div class="b">PAIEMENTS</div>';var pl2={card:"Carte",cash:"Esp\u00e8ces",giftcard:"Carte cadeau",mixed:"Mixte"};
+      Object.keys(rp.payments).forEach(function(k){h+='<div class="line"><span>&nbsp;&nbsp;'+(pl2[k]||k)+'</span><span>CHF '+rp.payments[k].toFixed(2)+'</span></div>';});h+='<div class="sep"></div>';}
+    if(rp.tva){h+='<div class="b">TVA</div>';rp.tva.forEach(function(t){h+='<div class="line"><span>&nbsp;&nbsp;TVA '+t.rate+'%</span><span>CHF '+t.amount.toFixed(2)+'</span></div>';});
+      if(rp.totalHT!==undefined)h+='<div class="line"><span>&nbsp;&nbsp;Total HT</span><span>CHF '+rp.totalHT.toFixed(2)+'</span></div>';h+='<div class="sep"></div>';}
+    if(rp.cashCount){h+='<div class="b">CAISSE</div>';
+      h+='<div class="line"><span>Fond</span><span>CHF '+(rp.cashCount.openAmount||0).toFixed(2)+'</span></div>';
+      h+='<div class="line"><span>Especes</span><span>CHF '+(rp.cashCount.cashSales||0).toFixed(2)+'</span></div>';
+      h+='<div class="line"><span>Theorique</span><span>CHF '+(rp.cashCount.expected||0).toFixed(2)+'</span></div>';
+      h+='<div class="line"><span>Compte</span><span>CHF '+(rp.cashCount.counted||0).toFixed(2)+'</span></div>';
+      var diff2=(rp.cashCount.counted||0)-(rp.cashCount.expected||0);
+      h+='<div class="line b"><span>Ecart</span><span>'+(diff2>=0?"+":"")+'CHF '+diff2.toFixed(2)+'</span></div>';}
+    if(tv)h+='<div class="sep"></div><div class="c sm">'+tv+'</div>';
+    h+='<div class="dsep"></div><div class="c sm">Imprime le '+new Date().toLocaleString("fr-CH")+'</div></body></html>';
+    var w=window.open("","_blank","width=320,height=700");
+    if(!w)return{success:false,error:"popup_blocked"};
+    w.document.write(h);w.document.close();setTimeout(function(){w.print();},400);return{success:true,fallback:true};
+  },
+};
+
+/* ── Unified print — ESC/POS or HTML fallback ──────────────────── */
+async function printTicketUnified(receipt,type){
+  type=type||"receipt";var c=PrinterService.getConfig();
+  if(PrinterService.isConnected()){
+    try{
+      if(type==="receipt")return await PrinterService.printReceipt(receipt);
+      if(type==="zreport")return await PrinterService.printZReport(receipt);
+      if(type==="kitchen")return await PrinterService.printKitchenOrder(receipt);
+    }catch(err){console.warn("ESC/POS fallback:",err);}
+  }
+  if(type==="receipt")return FallbackPrinter.printReceipt(receipt,c);
+  if(type==="zreport")return FallbackPrinter.printZReport(receipt,c);
+  return FallbackPrinter.printReceipt(Object.assign({},receipt,{tenant:"BON PRODUCTION"}),c);
+}
+
+/* ── usePrinter React Hook ─────────────────────────────────────── */
+function usePrinter(){
+  var _s=useState(false),connected=_s[0],setConnected=_s[1];
+  var _c=useState(null),config=_c[0],setConfig=_c[1];
+  var _e=useState(null),error=_e[0],setError=_e[1];
+  var _l=useState(false),loading=_l[0],setLoading=_l[1];
+  var _su=useState(false),supported=_su[0],setSupported=_su[1];
+  var _lp=useState(null),lastPrint=_lp[0],setLastPrint=_lp[1];
+  useEffect(function(){setSupported(PrinterService.isSupported());setConfig(PrinterService.loadConfig());},[]);
+  var connect=useCallback(async function(opts){
+    setLoading(true);setError(null);
+    try{await PrinterService.connect(opts);setConnected(true);setLastPrint({type:"connect",time:hm(),success:true});return{success:true};}
+    catch(err){setError(err.message);setConnected(false);throw err;}
+    finally{setLoading(false);}
+  },[]);
+  var disconnect=useCallback(async function(){await PrinterService.disconnect();setConnected(false);setError(null);},[]);
+  var updateConfig=useCallback(function(nc){var s=PrinterService.saveConfig(nc);setConfig(s);return s;},[]);
+  var printReceipt=useCallback(async function(r){
+    setLoading(true);setError(null);
+    try{var res=await printTicketUnified(r,"receipt");setLastPrint({type:"receipt",time:hm(),success:true,fallback:!!res.fallback,ticket:r.ticketNumber});return res;}
+    catch(err){setError(err.message);throw err;}finally{setLoading(false);}
+  },[]);
+  var printZReport=useCallback(async function(rp){
+    setLoading(true);setError(null);
+    try{var res=await printTicketUnified(rp,"zreport");setLastPrint({type:"zreport",time:hm(),success:true,fallback:!!res.fallback});return res;}
+    catch(err){setError(err.message);throw err;}finally{setLoading(false);}
+  },[]);
+  var printKitchenOrder=useCallback(async function(o){
+    setLoading(true);setError(null);
+    try{var res=await printTicketUnified(o,"kitchen");setLastPrint({type:"kitchen",time:hm(),success:true,fallback:!!res.fallback});return res;}
+    catch(err){setError(err.message);throw err;}finally{setLoading(false);}
+  },[]);
+  var printTest=useCallback(async function(){
+    setLoading(true);setError(null);
+    try{if(!PrinterService.isConnected())throw new Error("Non connectée");var res=await PrinterService.printTest();setLastPrint({type:"test",time:hm(),success:true});return res;}
+    catch(err){setError(err.message);throw err;}finally{setLoading(false);}
+  },[]);
+  var openDrawer=useCallback(async function(){try{await PrinterService.openDrawer();}catch(e){}},[]);
+  return{connected:connected,config:config,error:error,loading:loading,supported:supported,lastPrint:lastPrint,
+    connect:connect,disconnect:disconnect,updateConfig:updateConfig,printReceipt:printReceipt,
+    printZReport:printZReport,printKitchenOrder:printKitchenOrder,printTest:printTest,openDrawer:openDrawer};
+}
+
 // ── Cartes cadeaux helpers ──
 function generateGiftCode() {
   var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -571,6 +919,9 @@ export default function App() {
   const [installPrompt,   setInstallPrompt]   = useState(null);
   const [isInstalled,     setIsInstalled]     = useState(false);
 
+  // ── Printer (ESC/POS + fallback) ──
+  var printer = usePrinter();
+
   // ── Capturer beforeinstallprompt ──
   useEffect(function(){
     if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) {
@@ -711,8 +1062,8 @@ export default function App() {
               markRead={function(){ setSeenCount(otherMsgs); }}
               goRole={function(r){ setViewRole(r); }}
               onLogout={function(){ setCurrentUser(null); setChatOpen(false); setSeenCount(0); }}>
-        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} userName={userName} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} tenant={tenant} giftCards={giftCards} addGiftCard={addGiftCard} useGiftCard={useGiftCard} />}
-        {displayRole === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} recipes={recipes} catalogue={catalogue} />}
+        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} userName={userName} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} tenant={tenant} giftCards={giftCards} addGiftCard={addGiftCard} useGiftCard={useGiftCard} printer={printer} />}
+        {displayRole === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} recipes={recipes} catalogue={catalogue} printer={printer} />}
         {displayRole === "livreur"    && <Livreur    orders={orders} updOrder={updOrder} userStore={userStore} currentUser={currentUser} />}
         {(displayRole === "admin" || displayRole === "gerant" || (role==="admin" && !viewRole)) && (
           <Admin
@@ -728,6 +1079,7 @@ export default function App() {
             giftCards={giftCards} setGiftCards={setGiftCards}
             subscriptions={subscriptions} setSubscriptions={setSubscriptions}
             recipes={recipes} setRecipes={setRecipes}
+            printer={printer}
           />
         )}
       </Layout>
@@ -2571,6 +2923,7 @@ function Vendeuse(props) {
   var giftCards   = props.giftCards   || [];
   var addGiftCard = props.addGiftCard || function(){};
   var useGiftCard = props.useGiftCard || function(){};
+  var printer     = props.printer     || {};
 
   var myStore    = userStore || STORES[0];
   var myTables   = tableLayouts[myStore] || [];
@@ -2740,6 +3093,8 @@ function Vendeuse(props) {
     setLastSale(sale);
     setPaidAnim(true);
     setShowReceipt(true);
+    // Auto-print ticket after payment
+    printTicket(sale.items, sale);
     setTimeout(function(){
       clearCart();
       setPaidAnim(false);
@@ -2815,39 +3170,30 @@ function Vendeuse(props) {
     setPendingTickets(function(prev){ return prev.filter(function(t){ return t.id !== ticketId; }); });
   }
 
-  // ── Imprimer ticket (ouvre fenêtre print) ──
-  function printTicket(itemsOrTicket) {
+  // ── Imprimer ticket (ESC/POS ou HTML fallback) ──
+  function printTicket(itemsOrTicket, saleData) {
     var items = itemsOrTicket.cart || itemsOrTicket;
     var ticketClient = itemsOrTicket.client || client || "Client";
     var ticketTotal = items.reduce(function(s,i){ return s+i.price*i.qty; },0);
     var tv = computeTVA(items);
-    var w = window.open("","_blank","width=320,height=600");
-    if (!w) return;
-    w.document.write(
-      '<html><head><style>body{font-family:monospace;font-size:12px;padding:10px;max-width:280px;margin:0 auto}'+
-      '.line{display:flex;justify-content:space-between;margin:2px 0}.sep{border-top:1px dashed #000;margin:6px 0}'+
-      '.center{text-align:center}.bold{font-weight:bold}.big{font-size:16px}.small{font-size:9px;color:#666}</style></head><body>'+
-      '<div class="center bold big">'+tenant+'</div>'+
-      '<div class="center" style="font-size:10px;margin-bottom:8px">'+myStore+'</div>'+
-      '<div class="sep"></div>'+
-      '<div class="center" style="margin-bottom:4px">'+ticketClient+' · '+hm()+'</div>'+
-      '<div class="sep"></div>'+
-      items.map(function(i){
-        return '<div class="line"><span>'+i.qty+'× '+i.name+'</span><span>'+((i.price*i.qty).toFixed(2))+'</span></div>';
-      }).join('')+
-      '<div class="sep"></div>'+
-      '<div class="line bold big"><span>TOTAL TTC</span><span>CHF '+ticketTotal.toFixed(2)+'</span></div>'+
-      '<div class="sep"></div>'+
-      tv.lines.map(function(l){
-        return '<div class="line small"><span>dont TVA '+l.rate+'%</span><span>CHF '+l.tva.toFixed(2)+'</span></div>';
-      }).join('')+
-      '<div class="line small"><span>Total HT</span><span>CHF '+tv.totalHT.toFixed(2)+'</span></div>'+
-      '<div class="sep"></div>'+
-      '<div class="center" style="font-size:9px;margin-top:8px">Merci de votre visite !</div>'+
-      '</body></html>'
-    );
-    w.document.close();
-    w.print();
+    var receipt = {
+      tenant:        tenant,
+      storeAddress:  myStore,
+      ticketNumber:  (saleData && saleData.id) || ("T-" + Date.now()),
+      time:          hm(),
+      seller:        userName,
+      client:        ticketClient,
+      mode:          (saleData && saleData.mode) || null,
+      table:         activeTable ? ("Table " + activeTable) : null,
+      items:         items.map(function(i){ return {id:i.id,name:i.name,qty:i.qty,price:i.price,emoji:i.emoji,tva:i.tva||2.6}; }),
+      total:         ticketTotal,
+      tvaInfo:       tv,
+      payInfo:       (saleData && saleData.payInfo) || null,
+      note:          (saleData && saleData.note) || note || "",
+    };
+    if (printer && printer.printReceipt) {
+      printer.printReceipt(receipt).catch(function(err){ console.warn("Print:", err); });
+    }
   }
 
   function handleSave(updated) {
@@ -3791,6 +4137,7 @@ function Production(props) {
   var sendMsg = props.sendMsg;
   var recipes = props.recipes || [];
   var catalogue = props.catalogue || [];
+  var printer = props.printer || {};
 
   const [selId,   setSelId]   = useState(null);
   const [dest,    setDest]    = useState("");
@@ -3912,6 +4259,9 @@ function Production(props) {
                     onMouseOut={function(e){ e.currentTarget.style.background="#F7F3EE"; }}>✏️ Modifier</button>
                   <button onClick={function(){ markReady(o.id); }}
                     style={{flex:1,padding:"6px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>✅ Marquer prete</button>
+                  {printer&&printer.printKitchenOrder && <button onClick={function(e){e.stopPropagation(); printer.printKitchenOrder(o).catch(function(err){console.warn("Print kitchen:",err);});}}
+                    style={{padding:"6px 10px",borderRadius:8,border:"1px solid #D5C4B0",background:"#F7F3EE",color:"#5C4A32",fontSize:11,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}
+                    title="Imprimer bon de production">🖨</button>}
                 </div>
                 {selId === o.id ? (
                   <div style={{background:"#F7F3EE",borderRadius:9,padding:10}}>
@@ -4328,6 +4678,7 @@ function Admin(props) {
   var setSubscriptions = props.setSubscriptions || function(){};
   var recipes        = props.recipes        || [];
   var setRecipes     = props.setRecipes     || function(){};
+  var printer        = props.printer        || {};
 
   function loadDemoData(){
     var ds = _buildSales();
@@ -4346,6 +4697,7 @@ function Admin(props) {
   var canExportData   = permissions.features && permissions.features.indexOf("export_data") !== -1;
   var canManageSubs   = permissions.features && permissions.features.indexOf("manage_subscriptions") !== -1;
   var canManageRecipes= permissions.features && permissions.features.indexOf("manage_recipes") !== -1;
+  var canManagePrinter= permissions.features && permissions.features.indexOf("manage_printer") !== -1;
 
   const [adminTab,   setAdminTab]   = useState("dashboard");
   const [selO,       setSelO]       = useState(null);
@@ -4669,7 +5021,7 @@ function Admin(props) {
             <div style={{color:"#8B7355",fontSize:11}}>{new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
-            {[["dashboard","📊 Vue générale"],["commandes","📋 Commandes"],["catalogue","📦 Catalogue"],["planning","🏭 Planning"],["gestion","⚙️ Gestion"],["utilisateurs","👥 Utilisateurs"],["supervision","📈 Supervision"],["cartes","🎁 Cartes"],["abonnements","🔄 Abonnements"],["reporting","📊 Rapport"]]
+            {[["dashboard","📊 Vue générale"],["commandes","📋 Commandes"],["catalogue","📦 Catalogue"],["planning","🏭 Planning"],["gestion","⚙️ Gestion"],["utilisateurs","👥 Utilisateurs"],["supervision","📈 Supervision"],["cartes","🎁 Cartes"],["abonnements","🔄 Abonnements"],["reporting","📊 Rapport"],["imprimante","🖨 Imprimante"]]
             .filter(function(item){ return allowedTabs.indexOf(item[0]) !== -1; })
             .map(function(item){
               return (
@@ -7997,6 +8349,182 @@ function Admin(props) {
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ═══ ONGLET IMPRIMANTE ═══════════════════════════════════ */}
+        {adminTab==="imprimante" && (function(){
+          var pConfig = printer.config || PrinterService.getConfig();
+          return (
+            <div style={{animation:"fadeUp .25s ease"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+                <div>
+                  <h3 style={{fontFamily:"'Outfit',sans-serif",fontSize:22,color:"#1E0E05",margin:"0 0 4px"}}>🖨 Imprimante thermique</h3>
+                  <p style={{color:"#8B7355",fontSize:12,margin:0}}>Configuration ESC/POS · Web Serial API · Fallback HTML</p>
+                </div>
+              </div>
+
+              {/* Status message */}
+              {printer.error && (
+                <div style={{padding:"12px 16px",borderRadius:12,marginBottom:16,background:"#FEE2E2",color:"#991B1B",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,animation:"fadeUp .2s ease"}}>
+                  ❌ {printer.error}
+                </div>
+              )}
+
+              {/* Connection card */}
+              <div style={{background:"#1E0E05",borderRadius:16,padding:24,marginBottom:16,boxShadow:"0 4px 20px rgba(30,14,5,.15)"}}>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700,color:"#C8953A",marginBottom:16,display:"flex",alignItems:"center",gap:8}}>🔗 Connexion</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                  <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,
+                    background:printer.connected?"#D1FAE5":"#FEF3C7",color:printer.connected?"#065F46":"#92400E",
+                    fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600}}>
+                    <div style={{width:8,height:8,borderRadius:4,background:printer.connected?"#10B981":"#F59E0B",animation:"glow 1.5s ease infinite alternate"}} />
+                    {printer.connected?"Connectée":"Non connectée"}
+                  </div>
+                  {!printer.supported && (
+                    <div style={{padding:"6px 12px",borderRadius:8,background:"rgba(239,68,68,.15)",color:"#EF4444",fontSize:11,fontFamily:"'Outfit',sans-serif",fontWeight:600}}>
+                      ⚠️ Web Serial non supporté — utilisez Chrome/Edge
+                    </div>
+                  )}
+                </div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  {!printer.connected ? (
+                    <button onClick={function(){ printer.connect().catch(function(){}); }}
+                      disabled={printer.loading||!printer.supported}
+                      style={{padding:"10px 20px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#C8953A,#E8B968)",color:"#fff",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",opacity:printer.loading||!printer.supported?.5:1}}>
+                      {printer.loading?"⏳ Connexion…":"🔗 Connecter l'imprimante"}
+                    </button>
+                  ) : (
+                    React.createElement(React.Fragment,null,
+                      React.createElement("button",{onClick:function(){ printer.printTest().catch(function(){}); },disabled:printer.loading,
+                        style:{padding:"10px 20px",borderRadius:10,border:"none",background:"#D1FAE5",color:"#065F46",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}},"🧪 Page de test"),
+                      React.createElement("button",{onClick:function(){ printer.openDrawer(); },
+                        style:{padding:"10px 20px",borderRadius:10,border:"1px solid #3D2B1A",background:"#1E0E05",color:"#FDF8F0",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}},"🗃 Tiroir-caisse"),
+                      React.createElement("button",{onClick:function(){ printer.disconnect(); },
+                        style:{padding:"10px 20px",borderRadius:10,border:"none",background:"#FEE2E2",color:"#991B1B",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}},"Déconnecter")
+                    )
+                  )}
+                </div>
+                {printer.lastPrint && (
+                  <div style={{marginTop:12,fontSize:11,color:"rgba(253,248,240,.4)",fontFamily:"'Outfit',sans-serif"}}>
+                    Dernière action: {printer.lastPrint.type} à {printer.lastPrint.time}
+                    {printer.lastPrint.fallback?" (HTML fallback)":""}
+                    {printer.lastPrint.success?" ✅":" ❌"}
+                  </div>
+                )}
+              </div>
+
+              {/* Hardware config */}
+              <div style={{background:"#fff",borderRadius:16,border:"1px solid #EDE0D0",padding:24,marginBottom:16}}>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700,color:"#1E0E05",marginBottom:16}}>⚙️ Configuration matérielle</div>
+                <div style={{display:"flex",gap:12,marginBottom:12}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:"#5C4A32",marginBottom:6}}>Largeur papier</div>
+                    <div style={{display:"flex",gap:8}}>
+                      {["80mm","58mm"].map(function(k){
+                        var active=pConfig.paperWidth===k;
+                        return React.createElement("button",{key:k,onClick:function(){ printer.updateConfig(Object.assign({},pConfig,{paperWidth:k})); },
+                          style:{padding:"6px 14px",borderRadius:20,border:active?"2px solid #C8953A":"1px solid #EDE0D0",background:active?"rgba(200,149,58,.1)":"#fff",
+                            color:active?"#C8953A":"#5C4A32",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:active?700:500,cursor:"pointer"}},
+                          k+" ("+PAPER[k].chars+" car.)");
+                      })}
+                    </div>
+                  </div>
+                  <div style={{width:150}}>
+                    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:"#5C4A32",marginBottom:6}}>Baud rate</div>
+                    <select value={pConfig.baudRate} onChange={function(e){ printer.updateConfig(Object.assign({},pConfig,{baudRate:parseInt(e.target.value)})); }}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1px solid #EDE0D0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#1E0E05",background:"#FDFAF6",cursor:"pointer"}}>
+                      <option value={9600}>9600</option><option value={19200}>19200</option><option value={38400}>38400</option><option value={115200}>115200</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:"#5C4A32",marginBottom:6}}>Copies</div>
+                <div style={{display:"flex",gap:6,marginBottom:14}}>
+                  {[1,2,3].map(function(n){ var active=pConfig.copies===n;
+                    return React.createElement("button",{key:n,onClick:function(){ printer.updateConfig(Object.assign({},pConfig,{copies:n})); },
+                      style:{padding:"6px 14px",borderRadius:20,border:active?"2px solid #C8953A":"1px solid #EDE0D0",background:active?"rgba(200,149,58,.1)":"#fff",
+                        color:active?"#C8953A":"#5C4A32",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:active?700:500,cursor:"pointer"}},n+"×");
+                  })}
+                </div>
+                {/* Toggles */}
+                {[["autoCut","Couper le papier automatiquement"],["openDrawer","Ouvrir tiroir-caisse (paiement espèces)"],["beepOnPrint","Bip sonore après impression"]].map(function(t){
+                  var key=t[0],label=t[1],on=pConfig[key];
+                  return React.createElement("div",{key:key,style:{display:"flex",alignItems:"center",gap:10,marginBottom:12}},
+                    React.createElement("div",{onClick:function(){ var p={};p[key]=!on;printer.updateConfig(Object.assign({},pConfig,p)); },
+                      style:{width:44,height:24,borderRadius:12,background:on?"#C8953A":"#D4C5B0",position:"relative",cursor:"pointer",transition:"background .2s",flexShrink:0}},
+                      React.createElement("div",{style:{width:18,height:18,borderRadius:9,background:"#fff",position:"absolute",top:3,left:on?23:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}})
+                    ),
+                    React.createElement("span",{style:{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#5C4A32"}},label)
+                  );
+                })}
+              </div>
+
+              {/* Receipt content */}
+              <div style={{background:"#fff",borderRadius:16,border:"1px solid #EDE0D0",padding:24,marginBottom:16}}>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700,color:"#1E0E05",marginBottom:16}}>🧾 Contenu du ticket</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:"#5C4A32",marginBottom:4}}>Numéro TVA</div>
+                <input value={pConfig.tvaNumber||""} onChange={function(e){ printer.updateConfig(Object.assign({},pConfig,{tvaNumber:e.target.value})); }}
+                  placeholder="CHE-123.456.789 TVA"
+                  style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1px solid #EDE0D0",fontFamily:"'Outfit',sans-serif",fontSize:13,color:"#1E0E05",background:"#FDFAF6",marginBottom:12,boxSizing:"border-box"}} />
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:"#5C4A32",marginBottom:6}}>Pied de page</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {(pConfig.footerLines||[]).map(function(line,idx){
+                    return React.createElement("div",{key:idx,style:{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:8,background:"#F7F3EE",border:"1px solid #EDE0D0",fontSize:12,fontFamily:"'Outfit',sans-serif",color:"#5C4A32"}},
+                      line,
+                      React.createElement("span",{onClick:function(){ var nl=(pConfig.footerLines||[]).filter(function(_,i){return i!==idx;});printer.updateConfig(Object.assign({},pConfig,{footerLines:nl})); },
+                        style:{cursor:"pointer",color:"#DC2626",marginLeft:4,fontWeight:700}},"✕")
+                    );
+                  })}
+                </div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:"#5C4A32",marginBottom:6,marginTop:12}}>Avance papier avant coupe</div>
+                <div style={{display:"flex",gap:6}}>
+                  {[1,2,3,4,5].map(function(n){ var active=pConfig.feedLines===n;
+                    return React.createElement("button",{key:n,onClick:function(){ printer.updateConfig(Object.assign({},pConfig,{feedLines:n})); },
+                      style:{padding:"6px 14px",borderRadius:20,border:active?"2px solid #C8953A":"1px solid #EDE0D0",background:active?"rgba(200,149,58,.1)":"#fff",
+                        color:active?"#C8953A":"#5C4A32",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:active?700:500,cursor:"pointer"}},String(n));
+                  })}
+                </div>
+              </div>
+
+              {/* Receipt preview */}
+              <div style={{background:"#fff",borderRadius:16,border:"1px solid #EDE0D0",padding:24,marginBottom:16}}>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700,color:"#1E0E05",marginBottom:16}}>👁 Aperçu ticket</div>
+                <div style={{fontFamily:"'Courier New',monospace",fontSize:11,lineHeight:1.6,background:"#fff",border:"2px solid #EDE0D0",borderRadius:12,padding:16,maxWidth:300,margin:"0 auto",boxShadow:"inset 0 2px 8px rgba(0,0,0,.04)"}}>
+                  <div style={{textAlign:"center",fontWeight:700,fontSize:14}}>{tenant}</div>
+                  {pConfig.tvaNumber && <div style={{textAlign:"center",fontSize:9,color:"#888"}}>{pConfig.tvaNumber}</div>}
+                  <div style={{borderTop:"2px solid #000",margin:"6px 0"}} />
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Ticket: T-00042</span><span>14:32</span></div>
+                  <div>Vendeur: Léa</div>
+                  <div>Mode: Sur place · Table: 5</div>
+                  <div style={{borderTop:"1px dashed #000",margin:"4px 0"}} />
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>2× Croissant</span><span>4.80</span></div>
+                  <div style={{fontSize:9,color:"#888",paddingLeft:12}}>@ CHF 2.40</div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>1× Café crème</span><span>4.50</span></div>
+                  <div style={{borderTop:"1px dashed #000",margin:"4px 0"}} />
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#888"}}><span>TVA 8.1% (HT 8.60)</span><span>CHF 0.70</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#888"}}><span>Total HT</span><span>CHF 8.60</span></div>
+                  <div style={{borderTop:"1px dashed #000",margin:"4px 0"}} />
+                  <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:14}}><span>TOTAL TTC</span><span>CHF 9.30</span></div>
+                  <div style={{borderTop:"1px dashed #000",margin:"4px 0"}} />
+                  <div>Paiement: Espèces</div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Reçu</span><span>CHF 10.00</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontWeight:700}}><span>Rendu</span><span>CHF 0.70</span></div>
+                  <div style={{borderTop:"1px dashed #000",margin:"4px 0"}} />
+                  <div style={{textAlign:"center",fontSize:9,color:"#888"}}>{(pConfig.footerLines||["Merci de votre visite !"]).join(" · ")}</div>
+                  <div style={{textAlign:"center",fontSize:9,color:"#aaa"}}>{new Date().toLocaleString("fr-CH")}</div>
+                </div>
+              </div>
+
+              {/* Help */}
+              <div style={{background:"#FDFAF6",borderRadius:16,border:"1px solid #EDE0D0",padding:24}}>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700,color:"#1E0E05",marginBottom:12}}>💡 Imprimantes compatibles</div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:"#5C4A32",lineHeight:1.7}}>
+                  <strong>USB direct (Web Serial) :</strong> Epson TM-T20III, TM-T88VI · Star TSP143IV · Bixolon SRP-330III<br />
+                  <strong>Navigateurs :</strong> Chrome 89+, Edge 89+, Opera 75+<br />
+                  <strong>Fallback :</strong> Firefox/Safari → impression HTML classique optimisée 80mm
+                </div>
               </div>
             </div>
           );
