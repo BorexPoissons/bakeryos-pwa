@@ -1,4 +1,5 @@
 /* BakeryOS — Constants & Demo Data */
+import { computeTVA } from "./utils.js";
 
 const APP_VERSION = "3.8.0";
 
