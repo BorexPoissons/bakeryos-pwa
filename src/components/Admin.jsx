@@ -30,6 +30,13 @@ export default function Admin(props) {
   var recipes        = props.recipes        || [];
   var setRecipes     = props.setRecipes     || function(){};
   var printer        = props.printer        || {};
+  var waste          = props.waste          || [];
+  var addWaste       = props.addWaste       || function(){};
+  var refunds        = props.refunds        || [];
+  var clients        = props.clients        || [];
+  var setClients     = props.setClients     || function(){};
+  var tvaNumber      = props.tvaNumber      || "";
+  var setTvaNumber   = props.setTvaNumber   || function(){};
 
   function loadDemoData(){
     var ds = _buildSales();
@@ -1083,6 +1090,12 @@ export default function Admin(props) {
                       </div>
                     );
                   })}
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.9,display:"block",marginBottom:3}}>Numéro TVA (affiché sur les tickets)</label>
+                    <input value={tvaNumber} onChange={function(e){ setTvaNumber(e.target.value); }}
+                      placeholder="CHE-123.456.789 TVA"
+                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif"}} />
+                  </div>
                   <div style={{gridColumn:"1/-1"}}>
                     <label style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.9,display:"block",marginBottom:6}}>Logo de l'enseigne</label>
                     <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
@@ -2280,6 +2293,59 @@ export default function Admin(props) {
                   </table>
                 </div>
               </div>
+
+              {/* ── Remboursements du jour ── */}
+              {refunds && refunds.length > 0 && (
+                <div style={{background:"#fff",borderRadius:16,padding:18,marginBottom:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",border:"1px solid #EDE0D0"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <h4 style={{fontSize:14,fontWeight:700,color:"#1E0E05",margin:0}}>↩ Remboursements</h4>
+                    <span style={{fontSize:12,fontWeight:700,color:"#DC2626"}}>
+                      −CHF {refunds.filter(function(r){ return r.date === today; }).reduce(function(a,r){ return a+r.total; },0).toFixed(2)}
+                    </span>
+                  </div>
+                  {refunds.filter(function(r){ return r.date === today; }).length === 0 ? (
+                    <div style={{textAlign:"center",padding:"12px 0",color:"#8B7355",fontSize:11}}>Aucun remboursement aujourd'hui</div>
+                  ) : refunds.filter(function(r){ return r.date === today; }).map(function(r){
+                    return (
+                      <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f5f0eb"}}>
+                        <div style={{width:32,height:32,borderRadius:8,background:"rgba(239,68,68,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>↩</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:600,color:"#1E0E05"}}>{r.client} — {r.originalId}</div>
+                          <div style={{fontSize:10,color:"#8B7355"}}>{r.time} · {r.mode === "full" ? "Total" : "Partiel"}{r.reason ? " · " + r.reason : ""}</div>
+                        </div>
+                        <div style={{fontSize:13,fontWeight:700,color:"#DC2626"}}>−CHF {r.total.toFixed(2)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── Pertes du jour ── */}
+              {waste && waste.length > 0 && (
+                <div style={{background:"#fff",borderRadius:16,padding:18,marginBottom:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",border:"1px solid #EDE0D0"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <h4 style={{fontSize:14,fontWeight:700,color:"#1E0E05",margin:0}}>📉 Pertes / Invendus</h4>
+                    <span style={{fontSize:12,fontWeight:700,color:"#8B5CF6"}}>
+                      −CHF {waste.filter(function(w){ return w.date === today; }).reduce(function(a,w){ return a+w.totalLoss; },0).toFixed(2)}
+                    </span>
+                  </div>
+                  {waste.filter(function(w){ return w.date === today; }).length === 0 ? (
+                    <div style={{textAlign:"center",padding:"12px 0",color:"#8B7355",fontSize:11}}>Aucune perte enregistrée aujourd'hui</div>
+                  ) : waste.filter(function(w){ return w.date === today; }).map(function(w){
+                    var reasons = {invendu:"🍞 Invendu",casse:"💥 Cassé",perime:"⏰ Périmé",autre:"📝 Autre"};
+                    return (
+                      <div key={w.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f5f0eb"}}>
+                        <div style={{width:32,height:32,borderRadius:8,background:"rgba(139,92,246,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>📉</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:600,color:"#1E0E05"}}>{reasons[w.reason] || w.reason} — {w.items.length} article{w.items.length>1?"s":""}</div>
+                          <div style={{fontSize:10,color:"#8B7355"}}>{w.time} · {w.seller} · {w.store}</div>
+                        </div>
+                        <div style={{fontSize:13,fontWeight:700,color:"#8B5CF6"}}>−CHF {w.totalLoss.toFixed(2)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })()} 
