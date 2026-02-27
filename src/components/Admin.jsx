@@ -30,13 +30,6 @@ export default function Admin(props) {
   var recipes        = props.recipes        || [];
   var setRecipes     = props.setRecipes     || function(){};
   var printer        = props.printer        || {};
-  var waste          = props.waste          || [];
-  var addWaste       = props.addWaste       || function(){};
-  var refunds        = props.refunds        || [];
-  var clients        = props.clients        || [];
-  var setClients     = props.setClients     || function(){};
-  var tvaNumber      = props.tvaNumber      || "";
-  var setTvaNumber   = props.setTvaNumber   || function(){};
 
   function loadDemoData(){
     var ds = _buildSales();
@@ -612,77 +605,348 @@ export default function Admin(props) {
         )}
 
         {/* ── TAB: DASHBOARD ── */}
-        {adminTab==="dashboard" && (
-          <div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
-              {[
-                {l:"CA du jour",  v:"CHF "+totalCA.toFixed(2), icon:"💰",bg:"linear-gradient(135deg,#1E0E05,#3D2B1A)",a:"#C8953A"},
-                {l:"Commandes",   v:orders.length,             icon:"📋",bg:"linear-gradient(135deg,#1E40AF,#2563EB)",a:"#BFDBFE"},
-                {l:"Livrees",     v:nbL+"/"+orders.length,     icon:"✅",bg:"linear-gradient(135deg,#065F46,#059669)",a:"#A7F3D0"},
-                {l:"Modif. ddes", v:modN,                      icon:"🔔",bg:"linear-gradient(135deg,#DC2626,#B91C1C)",a:"#FEE2E2"},
-              ].map(function(k){
-                return (
-                  <div key={k.l} className="ch" style={{background:k.bg,borderRadius:14,padding:"16px 14px",boxShadow:"0 4px 16px rgba(0,0,0,.1)"}}>
-                    <div style={{fontSize:22,marginBottom:4}}>{k.icon}</div>
-                    <div style={{fontSize:18,fontWeight:700,color:k.a,fontFamily:"'Outfit',sans-serif",marginBottom:2}}>{k.v}</div>
-                    <div style={{fontSize:9,color:"rgba(255,255,255,.42)",textTransform:"uppercase",letterSpacing:.8}}>{k.l}</div>
+        {adminTab==="dashboard" && (function(){
+          // ── Dashboard Data ──
+          var todayS = new Date().toLocaleDateString("fr-CH");
+          var todaySales = (sales||[]).filter(function(s){ return s.date === todayS && (storeFilter==="all" || s.store===storeFilter); });
+          var caJour = todaySales.reduce(function(a,s){return a+s.total;},0);
+          var nbTx = todaySales.length;
+          var avgTicket = nbTx > 0 ? caJour / nbTx : 0;
+
+          // TVA du jour
+          var tvaTotalJour = 0;
+          todaySales.forEach(function(s){
+            (s.items||[]).forEach(function(it){
+              var rate = it.tva||2.6;
+              tvaTotalJour += (it.price*it.qty)/(100+rate)*rate;
+            });
+          });
+
+          // Ventes des 7 derniers jours pour sparkline
+          var last7 = [];
+          for(var d=6;d>=0;d--){
+            var dt=new Date(); dt.setDate(dt.getDate()-d); dt.setHours(0,0,0,0);
+            var ds=dt.toLocaleDateString("fr-CH");
+            var dayCA=(sales||[]).filter(function(s){return s.date===ds && (storeFilter==="all"||s.store===storeFilter);}).reduce(function(a,s){return a+s.total;},0);
+            var dayLabel=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"][dt.getDay()];
+            last7.push({label:dayLabel, ca:dayCA, date:ds, isToday:d===0});
+          }
+          var max7=Math.max.apply(null,last7.map(function(d){return d.ca;}).concat([1]));
+
+          // Order pipeline
+          var pipeline = [
+            {key:"attente",    label:"En attente",   icon:"⏳", count:storeOrders.filter(function(o){return o.status==="attente";}).length,   color:"#F59E0B", bg:"#FEF3C7"},
+            {key:"production", label:"En production", icon:"👨‍🍳", count:storeOrders.filter(function(o){return o.status==="production";}).length, color:"#3B82F6", bg:"#DBEAFE"},
+            {key:"prete",      label:"Prêtes",       icon:"✅", count:storeOrders.filter(function(o){return o.status==="prete";}).length,      color:"#EF4444", bg:"#FEE2E2"},
+            {key:"livraison",  label:"En livraison", icon:"🚐", count:storeOrders.filter(function(o){return o.status==="livraison";}).length,  color:"#8B5CF6", bg:"#F3E8FF"},
+            {key:"livre",      label:"Livrées",      icon:"🎉", count:storeOrders.filter(function(o){return o.status==="livre";}).length,      color:"#10B981", bg:"#D1FAE5"},
+          ];
+          var totalPipeline = storeOrders.length || 1;
+
+          // Top produits du jour
+          var prodMap = {};
+          todaySales.forEach(function(s){
+            (s.items||[]).forEach(function(it){
+              if(!prodMap[it.name]) prodMap[it.name]={name:it.name,qty:0,ca:0,emoji:"📦",id:it.id};
+              prodMap[it.name].qty += it.qty;
+              prodMap[it.name].ca += it.price*it.qty;
+            });
+          });
+          Object.values(prodMap).forEach(function(p){
+            var found = catalogue.find(function(c){return c.id===p.id||c.name===p.name;});
+            if(found) p.emoji = found.emoji||"📦";
+          });
+          var topProds = Object.values(prodMap).sort(function(a,b){return b.ca-a.ca;}).slice(0,5);
+          var topProdMax = topProds.length>0 ? topProds[0].ca : 1;
+
+          // Ventes par heure du jour
+          var byHour = {};
+          todaySales.forEach(function(s){
+            var h = s.time ? parseInt(s.time.split(":")[0]) : 0;
+            if(!byHour[h]) byHour[h]={h:h,ca:0,tx:0};
+            byHour[h].ca += s.total;
+            byHour[h].tx += 1;
+          });
+          var hourData = [];
+          for(var h=6;h<=21;h++){
+            hourData.push({h:h, label:h+"h", ca:(byHour[h]||{ca:0}).ca, tx:(byHour[h]||{tx:0}).tx});
+          }
+          var maxHourCA = hourData.reduce(function(m,d){return Math.max(m,d.ca);},1);
+
+          // Cartes cadeaux actives
+          var activeGifts = (giftCards||[]).filter(function(g){return g.status==="active";});
+          var giftBalance = activeGifts.reduce(function(a,g){return a+g.balance;},0);
+
+          // Staff actif
+          var activeUsers = users.filter(function(u){return u.actif;});
+          var roleCount = {};
+          activeUsers.forEach(function(u){ roleCount[u.role] = (roleCount[u.role]||0)+1; });
+
+          // Stock alerts
+          var lowStock = catalogue.filter(function(p){return p.active && p.stock!==undefined && p.stock<=5;});
+
+          return (
+            <div>
+              {/* ── ROW 1: KPI Cards ── */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                {/* CA du jour */}
+                <div style={{background:"linear-gradient(135deg,#1E0E05,#3D2B1A)",borderRadius:16,padding:"18px 16px",position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:-8,right:-8,fontSize:48,opacity:.06}}>💰</div>
+                  <div style={{fontSize:10,color:"rgba(253,248,240,.45)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>CA du jour</div>
+                  <div style={{fontSize:26,fontWeight:800,color:"#C8953A",fontFamily:"'Outfit',sans-serif",lineHeight:1}}>CHF {caJour.toFixed(2)}</div>
+                  <div style={{marginTop:8,display:"flex",gap:12}}>
+                    <span style={{fontSize:9,color:"rgba(253,248,240,.35)"}}>{nbTx} vente{nbTx>1?"s":""}</span>
+                    <span style={{fontSize:9,color:"rgba(253,248,240,.35)"}}>Ø CHF {avgTicket.toFixed(2)}</span>
                   </div>
-                );
-              })}
-            </div>
-            {urgN>0 && <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>🚨</span><span style={{color:"#92400E",fontSize:12,fontWeight:600}}>{urgN} commande(s) urgente(s)</span></div>}
-            {modN>0 && <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>🔔</span><span style={{color:"#DC2626",fontSize:12,fontWeight:600}}>{modN} demande(s) de modification</span></div>}
-            {subsDueToday.length>0 && (
-              <div style={{background:"#EDE9FE",border:"1px solid #C4B5FD",borderRadius:10,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8,justifyContent:"space-between"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span>🔄</span>
-                  <span style={{color:"#5B21B6",fontSize:12,fontWeight:600}}>{subsDueToday.length} abonnement(s) à générer aujourd'hui</span>
+                  {/* Mini sparkline 7j */}
+                  <svg width="100%" height="28" viewBox="0 0 120 28" style={{marginTop:8,display:"block"}} preserveAspectRatio="none">
+                    {last7.map(function(d,i){
+                      var bh = d.ca>0 ? Math.max(2, d.ca/max7*24) : 0;
+                      return <rect key={i} x={i*17+2} y={28-bh} width="13" height={bh} rx="2"
+                        fill={d.isToday?"#C8953A":"rgba(200,149,58,.25)"} />;
+                    })}
+                  </svg>
                 </div>
+
+                {/* Commandes actives */}
+                <div style={{background:"linear-gradient(135deg,#1E40AF,#2563EB)",borderRadius:16,padding:"18px 16px",position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:-8,right:-8,fontSize:48,opacity:.08}}>📋</div>
+                  <div style={{fontSize:10,color:"rgba(191,219,254,.6)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Commandes actives</div>
+                  <div style={{fontSize:26,fontWeight:800,color:"#BFDBFE",fontFamily:"'Outfit',sans-serif",lineHeight:1}}>{storeOrders.filter(function(o){return o.status!=="livre";}).length}</div>
+                  <div style={{marginTop:8,display:"flex",gap:12}}>
+                    <span style={{fontSize:9,color:"rgba(191,219,254,.45)"}}>{storeOrders.length} total</span>
+                    <span style={{fontSize:9,color:"rgba(191,219,254,.45)"}}>{nbL} livrée{nbL>1?"s":""}</span>
+                  </div>
+                  <div style={{marginTop:8,height:4,background:"rgba(255,255,255,.12)",borderRadius:2}}>
+                    <div style={{height:"100%",borderRadius:2,background:"#BFDBFE",width:(nbL/Math.max(storeOrders.length,1)*100)+"%",transition:"width .6s ease"}}/>
+                  </div>
+                </div>
+
+                {/* TVA due */}
+                <div style={{background:"linear-gradient(135deg,#5B21B6,#7C3AED)",borderRadius:16,padding:"18px 16px",position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:-8,right:-8,fontSize:48,opacity:.08}}>🏛</div>
+                  <div style={{fontSize:10,color:"rgba(233,213,255,.6)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>TVA due aujourd'hui</div>
+                  <div style={{fontSize:26,fontWeight:800,color:"#E9D5FF",fontFamily:"'Outfit',sans-serif",lineHeight:1}}>CHF {tvaTotalJour.toFixed(2)}</div>
+                  <div style={{marginTop:8,display:"flex",gap:12}}>
+                    <span style={{fontSize:9,color:"rgba(233,213,255,.45)"}}>HT: CHF {(caJour-tvaTotalJour).toFixed(2)}</span>
+                  </div>
+                  <div style={{marginTop:8,display:"flex",gap:4}}>
+                    <span style={{fontSize:8,color:"rgba(233,213,255,.6)",background:"rgba(255,255,255,.1)",padding:"2px 6px",borderRadius:4}}>2.6% emporter</span>
+                    <span style={{fontSize:8,color:"rgba(233,213,255,.6)",background:"rgba(255,255,255,.1)",padding:"2px 6px",borderRadius:4}}>8.1% sur place</span>
+                  </div>
+                </div>
+
+                {/* Alertes */}
+                <div style={{background: urgN>0||modN>0 ? "linear-gradient(135deg,#DC2626,#B91C1C)" : "linear-gradient(135deg,#065F46,#059669)",borderRadius:16,padding:"18px 16px",position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:-8,right:-8,fontSize:48,opacity:.08}}>{urgN>0||modN>0?"🚨":"✅"}</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Alertes</div>
+                  <div style={{fontSize:26,fontWeight:800,color:urgN>0||modN>0?"#FEE2E2":"#A7F3D0",fontFamily:"'Outfit',sans-serif",lineHeight:1}}>{urgN+modN}</div>
+                  <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:3}}>
+                    {urgN>0 && <span style={{fontSize:9,color:"rgba(254,226,226,.7)"}}>🚨 {urgN} urgente{urgN>1?"s":""}</span>}
+                    {modN>0 && <span style={{fontSize:9,color:"rgba(254,226,226,.7)"}}>🔔 {modN} modif.</span>}
+                    {urgN===0&&modN===0 && <span style={{fontSize:9,color:"rgba(167,243,208,.6)"}}>Aucune alerte</span>}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── ROW 2: Alerts banners ── */}
+              {urgN>0 && <div style={{background:"#FEF3C7",border:"1.5px solid #FCD34D",borderRadius:12,padding:"10px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:18}}>🚨</span>
+                <span style={{color:"#92400E",fontSize:12,fontWeight:600,flex:1}}>{urgN} commande(s) urgente(s) en attente</span>
+                <button onClick={function(){setAdminTab("commandes");setFlt("all");}} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#92400E",color:"#FEF3C7",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>Voir</button>
+              </div>}
+              {modN>0 && <div style={{background:"#FEE2E2",border:"1.5px solid #FCA5A5",borderRadius:12,padding:"10px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:18}}>🔔</span>
+                <span style={{color:"#DC2626",fontSize:12,fontWeight:600,flex:1}}>{modN} demande(s) de modification</span>
+                <button onClick={function(){setAdminTab("commandes");setFlt("all");}} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#DC2626",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>Traiter</button>
+              </div>}
+              {subsDueToday.length>0 && <div style={{background:"#EDE9FE",border:"1.5px solid #C4B5FD",borderRadius:12,padding:"10px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:18}}>🔄</span>
+                <span style={{color:"#5B21B6",fontSize:12,fontWeight:600,flex:1}}>{subsDueToday.length} abonnement(s) à générer aujourd'hui</span>
                 <button onClick={function(){
                   var gen = generateSubOrders(subsDueToday);
                   setSavedMsg("✅ "+gen.length+" commande(s) générée(s)"); setTimeout(function(){ setSavedMsg(""); },3000);
-                }}
-                  style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#7C3AED",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
-                  Générer
-                </button>
+                }} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#7C3AED",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>Générer</button>
+              </div>}
+              {lowStock.length>0 && <div style={{background:"#FFF7ED",border:"1.5px solid #FDBA74",borderRadius:12,padding:"10px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:18}}>📦</span>
+                <span style={{color:"#C2410C",fontSize:12,fontWeight:600,flex:1}}>{lowStock.length} produit(s) en stock faible : {lowStock.slice(0,3).map(function(p){return p.emoji+" "+p.name;}).join(", ")}{lowStock.length>3?"…":""}</span>
+                <button onClick={function(){setAdminTab("catalogue");}} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#C2410C",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>Stock</button>
+              </div>}
+
+              {/* ── ROW 3: Order Pipeline ── */}
+              <div style={{background:"#fff",borderRadius:16,padding:"18px 20px",boxShadow:"0 2px 12px rgba(0,0,0,.05)",marginBottom:16}}>
+                <div style={{fontWeight:700,color:"#1E0E05",fontSize:13,marginBottom:14,fontFamily:"'Outfit',sans-serif"}}>📊 Pipeline des commandes</div>
+                <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
+                  {pipeline.map(function(p,i){
+                    var pct = Math.round(p.count/totalPipeline*100);
+                    return (
+                      <div key={p.key} style={{flex:1,position:"relative"}}>
+                        <div style={{background:p.bg,borderRadius:12,padding:"14px 10px",textAlign:"center",border:"1.5px solid "+p.color+"22",transition:"all .2s",cursor:"pointer"}}
+                          onClick={function(){setAdminTab("commandes");setFlt(p.key);}}>
+                          <div style={{fontSize:20,marginBottom:4}}>{p.icon}</div>
+                          <div style={{fontSize:22,fontWeight:800,color:p.color,fontFamily:"'Outfit',sans-serif"}}>{p.count}</div>
+                          <div style={{fontSize:9,color:p.color,opacity:.7,textTransform:"uppercase",letterSpacing:.5,marginTop:2}}>{p.label}</div>
+                          <div style={{marginTop:6,height:4,background:"rgba(0,0,0,.06)",borderRadius:2}}>
+                            <div style={{height:"100%",borderRadius:2,background:p.color,width:pct+"%",transition:"width .8s ease"}}/>
+                          </div>
+                          <div style={{fontSize:8,color:p.color,opacity:.5,marginTop:3}}>{pct}%</div>
+                        </div>
+                        {i<pipeline.length-1 && <div style={{position:"absolute",right:-8,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"#D5C4B0",zIndex:2}}>→</div>}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            )}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
-                <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>📊 Revenue par magasin</div>
-                {byStore.map(function(row){
-                  return (
-                    <div key={row.name} style={{marginBottom:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                        <span style={{fontSize:10,color:"#5C4A32"}}>{row.name}</span>
-                        <span style={{fontSize:11,fontWeight:600,color:"#C8953A"}}>CHF {row.val.toFixed(2)}</span>
-                      </div>
-                      <div style={{height:6,background:"#F0E8DC",borderRadius:3}}>
-                        <div style={{height:"100%",borderRadius:3,background:"linear-gradient(90deg,#C8953A,#a07228)",width:(row.val/maxS*100)+"%",transition:"width 1.1s ease"}} />
-                      </div>
+
+              {/* ── ROW 4: Charts row ── */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                {/* Ventes par heure */}
+                <div style={{background:"#fff",borderRadius:16,padding:"18px 20px",boxShadow:"0 2px 12px rgba(0,0,0,.05)"}}>
+                  <div style={{fontWeight:700,color:"#1E0E05",fontSize:13,marginBottom:14,fontFamily:"'Outfit',sans-serif"}}>⏰ Ventes par heure</div>
+                  {nbTx===0 ? (
+                    <div style={{textAlign:"center",color:"#B8A898",fontSize:11,padding:"24px 0"}}>
+                      <div style={{fontSize:28,marginBottom:6}}>📊</div>
+                      Aucune vente aujourd'hui
                     </div>
-                  );
-                })}
+                  ) : (
+                    <svg width="100%" viewBox="0 0 340 100" style={{overflow:"visible"}}>
+                      {[0,.5,1].map(function(t){
+                        var y=90-t*80;
+                        return <g key={t}><line x1="0" y1={y} x2="340" y2={y} stroke="#F0E8DC" strokeWidth=".5"/><text x="342" y={y+3} fontSize="6" fill="#B8A898">{"CHF "+(maxHourCA*t).toFixed(0)}</text></g>;
+                      })}
+                      {hourData.map(function(d,i){
+                        var bw=18, x=i*(340/hourData.length)+2;
+                        var bh=d.ca>0?Math.max(2,d.ca/maxHourCA*75):0;
+                        var now=new Date().getHours();
+                        return <g key={i}>
+                          <rect x={x} y={90-bh} width={bw} height={bh} rx="3"
+                            fill={d.h===now?"#C8953A":d.ca>0?"#DBC9A8":"#F0E8DC"} opacity={d.ca>0?1:.4}>
+                            <title>{d.label+" — CHF "+d.ca.toFixed(2)+" ("+d.tx+" tx)"}</title>
+                          </rect>
+                          {d.ca>0 && <text x={x+bw/2} y={90-bh-3} textAnchor="middle" fontSize="6" fontWeight="700" fill="#1E0E05">{d.ca.toFixed(0)}</text>}
+                          <text x={x+bw/2} y={100} textAnchor="middle" fontSize="6" fill="#B8A898">{d.label}</text>
+                        </g>;
+                      })}
+                    </svg>
+                  )}
+                </div>
+
+                {/* Top 5 produits */}
+                <div style={{background:"#fff",borderRadius:16,padding:"18px 20px",boxShadow:"0 2px 12px rgba(0,0,0,.05)"}}>
+                  <div style={{fontWeight:700,color:"#1E0E05",fontSize:13,marginBottom:14,fontFamily:"'Outfit',sans-serif"}}>🏆 Top produits du jour</div>
+                  {topProds.length===0 ? (
+                    <div style={{textAlign:"center",color:"#B8A898",fontSize:11,padding:"24px 0"}}>
+                      <div style={{fontSize:28,marginBottom:6}}>🥐</div>
+                      Aucune donnée aujourd'hui
+                    </div>
+                  ) : topProds.map(function(p,i){
+                    var barPct = p.ca/topProdMax*100;
+                    var medals = ["🥇","🥈","🥉","",""];
+                    return (
+                      <div key={p.name} style={{marginBottom:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                          <span style={{fontSize:14}}>{p.emoji}</span>
+                          <span style={{fontSize:11,fontWeight:600,color:"#1E0E05",flex:1}}>{medals[i]||""} {p.name}</span>
+                          <span style={{fontSize:10,color:"#8B7355"}}>{p.qty} pcs</span>
+                          <span style={{fontSize:11,fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {p.ca.toFixed(2)}</span>
+                        </div>
+                        <div style={{height:6,background:"#F0E8DC",borderRadius:3}}>
+                          <div style={{height:"100%",borderRadius:3,background:i===0?"linear-gradient(90deg,#C8953A,#E8B86D)":i===1?"#DBC9A8":"#E8DCC8",width:barPct+"%",transition:"width .6s ease"}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
-                <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:10}}>⚡ Activite recente</div>
-                {orders.slice(0,8).map(function(o){
-                  var sm = SM[o.status] || SM.attente;
-                  return (
-                    <div key={o.id} style={{display:"flex",gap:8,marginBottom:7,alignItems:"flex-start"}}>
-                      <div style={{width:6,height:6,borderRadius:"50%",marginTop:3,flexShrink:0,background:sm.dot}} />
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:11,color:"#3D2B1A",fontWeight:500}}>{o.id} · {o.client}</div>
-                        <div style={{fontSize:10,color:"#8B7355"}}>{sm.label} · {o.time}</div>
+
+              {/* ── ROW 5: Revenue + Activity ── */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                {/* Revenue par magasin */}
+                <div style={{background:"#fff",borderRadius:16,padding:"18px 20px",boxShadow:"0 2px 12px rgba(0,0,0,.05)"}}>
+                  <div style={{fontWeight:700,color:"#1E0E05",fontSize:13,marginBottom:14,fontFamily:"'Outfit',sans-serif"}}>🏪 Revenue par magasin</div>
+                  {byStore.map(function(row,i){
+                    var colors = ["#C8953A","#3B82F6","#10B981"];
+                    var pct = maxS>0 ? row.val/maxS*100 : 0;
+                    var totalPct = totalCA>0 ? row.val/totalCA*100 : 0;
+                    return (
+                      <div key={row.name} style={{marginBottom:12}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{width:8,height:8,borderRadius:4,background:colors[i]||"#8B7355"}}/>
+                            <span style={{fontSize:11,color:"#5C4A32",fontWeight:500}}>{row.name}</span>
+                          </div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:12,fontWeight:700,color:"#1E0E05",fontFamily:"'Outfit',sans-serif"}}>CHF {row.val.toFixed(2)}</span>
+                            <span style={{fontSize:9,color:"#8B7355",background:"#F7F3EE",padding:"2px 6px",borderRadius:6}}>{totalPct.toFixed(0)}%</span>
+                          </div>
+                        </div>
+                        <div style={{height:8,background:"#F0E8DC",borderRadius:4}}>
+                          <div style={{height:"100%",borderRadius:4,background:colors[i]||"#8B7355",width:pct+"%",transition:"width .8s ease"}}/>
+                        </div>
                       </div>
-                      <div style={{fontSize:10,color:"#C8953A",fontWeight:600,whiteSpace:"nowrap"}}>CHF {o.total.toFixed(2)}</div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                  {/* Total */}
+                  <div style={{marginTop:8,paddingTop:10,borderTop:"2px solid #EDE0D0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#5C4A32",textTransform:"uppercase",letterSpacing:.8}}>Total</span>
+                    <span style={{fontSize:16,fontWeight:800,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {totalCA.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Activité récente + équipe */}
+                <div style={{background:"#fff",borderRadius:16,padding:"18px 20px",boxShadow:"0 2px 12px rgba(0,0,0,.05)"}}>
+                  <div style={{fontWeight:700,color:"#1E0E05",fontSize:13,marginBottom:10,fontFamily:"'Outfit',sans-serif"}}>⚡ Activité récente</div>
+                  {storeOrders.slice(0,6).map(function(o){
+                    var sm = SM[o.status] || SM.attente;
+                    return (
+                      <div key={o.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #F7F3EE",cursor:"pointer"}}
+                        onClick={function(){setSelO(o);setAdminTab("commandes");}}>
+                        <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,background:sm.dot}} />
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:11,color:"#1E0E05",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.id} · {o.client}</div>
+                          <div style={{fontSize:9,color:"#8B7355"}}>{sm.label} · {o.time}{o.priority==="urgent"?" · 🚨":""}
+                          </div>
+                        </div>
+                        <span style={{fontSize:11,color:"#C8953A",fontWeight:700,fontFamily:"'Outfit',sans-serif",flexShrink:0}}>CHF {o.total.toFixed(2)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── ROW 6: Quick stats footer ── */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,.04)",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:4}}>🎁</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#1E0E05",fontFamily:"'Outfit',sans-serif"}}>{activeGifts.length}</div>
+                  <div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.8}}>Cartes cadeaux</div>
+                  <div style={{fontSize:10,color:"#C8953A",fontWeight:600,marginTop:2}}>CHF {giftBalance.toFixed(2)}</div>
+                </div>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,.04)",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:4}}>🔄</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#1E0E05",fontFamily:"'Outfit',sans-serif"}}>{(subscriptions||[]).filter(function(s){return s.active;}).length}</div>
+                  <div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.8}}>Abonnements actifs</div>
+                  <div style={{fontSize:10,color:subsDueToday.length>0?"#7C3AED":"#8B7355",fontWeight:600,marginTop:2}}>{subsDueToday.length} à générer</div>
+                </div>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,.04)",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:4}}>👥</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#1E0E05",fontFamily:"'Outfit',sans-serif"}}>{activeUsers.length}</div>
+                  <div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.8}}>Équipe active</div>
+                  <div style={{fontSize:10,color:"#5C4A32",marginTop:2}}>
+                    {Object.entries(roleCount).map(function(e){return e[1]+"× "+e[0];}).join(" · ")}
+                  </div>
+                </div>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,.04)",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:4}}>📦</div>
+                  <div style={{fontSize:16,fontWeight:700,color:lowStock.length>0?"#DC2626":"#065F46",fontFamily:"'Outfit',sans-serif"}}>{catalogue.filter(function(p){return p.active;}).length}</div>
+                  <div style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.8}}>Produits actifs</div>
+                  <div style={{fontSize:10,color:lowStock.length>0?"#DC2626":"#8B7355",fontWeight:lowStock.length>0?600:400,marginTop:2}}>{lowStock.length>0?lowStock.length+" stock bas":"Stock OK"}</div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── TAB: COMMANDES ── */}
         {adminTab==="commandes" && (
@@ -1090,12 +1354,6 @@ export default function Admin(props) {
                       </div>
                     );
                   })}
-                  <div style={{gridColumn:"1/-1"}}>
-                    <label style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.9,display:"block",marginBottom:3}}>Numéro TVA (affiché sur les tickets)</label>
-                    <input value={tvaNumber} onChange={function(e){ setTvaNumber(e.target.value); }}
-                      placeholder="CHE-123.456.789 TVA"
-                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #D5C4B0",background:"#F7F3EE",fontSize:12,outline:"none",fontFamily:"'Outfit',sans-serif"}} />
-                  </div>
                   <div style={{gridColumn:"1/-1"}}>
                     <label style={{fontSize:9,color:"#8B7355",textTransform:"uppercase",letterSpacing:.9,display:"block",marginBottom:6}}>Logo de l'enseigne</label>
                     <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
@@ -2293,59 +2551,6 @@ export default function Admin(props) {
                   </table>
                 </div>
               </div>
-
-              {/* ── Remboursements du jour ── */}
-              {refunds && refunds.length > 0 && (
-                <div style={{background:"#fff",borderRadius:16,padding:18,marginBottom:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",border:"1px solid #EDE0D0"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <h4 style={{fontSize:14,fontWeight:700,color:"#1E0E05",margin:0}}>↩ Remboursements</h4>
-                    <span style={{fontSize:12,fontWeight:700,color:"#DC2626"}}>
-                      −CHF {refunds.filter(function(r){ return r.date === today; }).reduce(function(a,r){ return a+r.total; },0).toFixed(2)}
-                    </span>
-                  </div>
-                  {refunds.filter(function(r){ return r.date === today; }).length === 0 ? (
-                    <div style={{textAlign:"center",padding:"12px 0",color:"#8B7355",fontSize:11}}>Aucun remboursement aujourd'hui</div>
-                  ) : refunds.filter(function(r){ return r.date === today; }).map(function(r){
-                    return (
-                      <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f5f0eb"}}>
-                        <div style={{width:32,height:32,borderRadius:8,background:"rgba(239,68,68,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>↩</div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:11,fontWeight:600,color:"#1E0E05"}}>{r.client} — {r.originalId}</div>
-                          <div style={{fontSize:10,color:"#8B7355"}}>{r.time} · {r.mode === "full" ? "Total" : "Partiel"}{r.reason ? " · " + r.reason : ""}</div>
-                        </div>
-                        <div style={{fontSize:13,fontWeight:700,color:"#DC2626"}}>−CHF {r.total.toFixed(2)}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* ── Pertes du jour ── */}
-              {waste && waste.length > 0 && (
-                <div style={{background:"#fff",borderRadius:16,padding:18,marginBottom:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",border:"1px solid #EDE0D0"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <h4 style={{fontSize:14,fontWeight:700,color:"#1E0E05",margin:0}}>📉 Pertes / Invendus</h4>
-                    <span style={{fontSize:12,fontWeight:700,color:"#8B5CF6"}}>
-                      −CHF {waste.filter(function(w){ return w.date === today; }).reduce(function(a,w){ return a+w.totalLoss; },0).toFixed(2)}
-                    </span>
-                  </div>
-                  {waste.filter(function(w){ return w.date === today; }).length === 0 ? (
-                    <div style={{textAlign:"center",padding:"12px 0",color:"#8B7355",fontSize:11}}>Aucune perte enregistrée aujourd'hui</div>
-                  ) : waste.filter(function(w){ return w.date === today; }).map(function(w){
-                    var reasons = {invendu:"🍞 Invendu",casse:"💥 Cassé",perime:"⏰ Périmé",autre:"📝 Autre"};
-                    return (
-                      <div key={w.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f5f0eb"}}>
-                        <div style={{width:32,height:32,borderRadius:8,background:"rgba(139,92,246,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>📉</div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:11,fontWeight:600,color:"#1E0E05"}}>{reasons[w.reason] || w.reason} — {w.items.length} article{w.items.length>1?"s":""}</div>
-                          <div style={{fontSize:10,color:"#8B7355"}}>{w.time} · {w.seller} · {w.store}</div>
-                        </div>
-                        <div style={{fontSize:13,fontWeight:700,color:"#8B5CF6"}}>−CHF {w.totalLoss.toFixed(2)}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           );
         })()} 
