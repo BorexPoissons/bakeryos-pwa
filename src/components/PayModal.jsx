@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { computeTVA } from "../utils.js";
 
 export default function PayModal(props) {
@@ -289,4 +289,3 @@ export default function PayModal(props) {
     </div>
   );
 }
-
