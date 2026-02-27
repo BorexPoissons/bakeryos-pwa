@@ -288,6 +288,8 @@ var FallbackPrinter={
 /* ── Unified print — ESC/POS or HTML fallback ──────────────────── */
 async function printTicketUnified(receipt,type){
   type=type||"receipt";var c=PrinterService.getConfig();
+  // Merge tvaNumber from receipt if not in config
+  if(receipt.tvaNumber && !c.tvaNumber) c=Object.assign({},c,{tvaNumber:receipt.tvaNumber});
   if(PrinterService.isConnected()){
     try{
       if(type==="receipt")return await PrinterService.printReceipt(receipt);
