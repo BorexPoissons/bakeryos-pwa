@@ -6,6 +6,10 @@ import ReceiptModal from "./ReceiptModal.jsx";
 import ClientDisplay from "./ClientDisplay.jsx";
 import EditModal from "./EditModal.jsx";
 import { FloorPlanView, TableCart } from "./FloorPlan.jsx";
+import CaisseModal from "./CaisseModal.jsx";
+import RefundModal from "./RefundModal.jsx";
+import ClientSearch from "./ClientSearch.jsx";
+import WasteModal from "./WasteModal.jsx";
 
 export default function Vendeuse(props) {
   var orders    = props.orders;
@@ -26,6 +30,17 @@ export default function Vendeuse(props) {
   var addGiftCard = props.addGiftCard || function(){};
   var useGiftCard = props.useGiftCard || function(){};
   var printer     = props.printer     || {};
+  var nextTicketNumber = props.nextTicketNumber || function(){ return "T-" + Date.now(); };
+  var clients     = props.clients     || [];
+  var addClient   = props.addClient   || function(){};
+  var updateClient= props.updateClient|| function(){};
+  var registerState   = props.registerState;
+  var setRegisterState= props.setRegisterState || function(){};
+  var refunds     = props.refunds     || [];
+  var addRefund   = props.addRefund   || function(){};
+  var waste       = props.waste       || [];
+  var addWaste    = props.addWaste    || function(){};
+  var tvaNumber   = props.tvaNumber   || "";
 
   var myStore    = userStore || STORES[0];
   var myTables   = tableLayouts[myStore] || [];
@@ -61,6 +76,10 @@ export default function Vendeuse(props) {
   const [parkAnim,       setParkAnim]       = useState(false); // animation "en attente"
   const [pendingTickets, setPendingTickets]  = useState([]); // tickets en attente sans table
   const [printingTicket, setPrintingTicket]  = useState(null); // ticket en cours d'impression
+  const [showCaisse,     setShowCaisse]     = useState(null); // "open" | "close" | null
+  const [showRefund,     setShowRefund]     = useState(null); // sale object to refund
+  const [showWaste,      setShowWaste]      = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null); // client object sélectionné
 
   var CATS_ACTIVE = ["Tous"].concat(
     activeProd.reduce(function(acc,p){
@@ -75,6 +94,16 @@ export default function Vendeuse(props) {
 
   function addToCart(p) {
     setCartErr("");
+    // Stock blocage : vérifier si stock > 0 (si stock géré)
+    var catItem = catalogue.find(function(c){ return c.id === p.id; });
+    if (catItem && catItem.stock !== undefined && catItem.stock !== null && catItem.stock > 0) {
+      var inCart = cart.find(function(i){ return i.id === p.id; });
+      var qtyInCart = inCart ? inCart.qty : 0;
+      if (qtyInCart >= catItem.stock) {
+        setCartErr(p.name + " — stock insuffisant (" + catItem.stock + " dispo)");
+        return;
+      }
+    }
     setCart(function(prev){
       var ex = prev.find(function(i){ return i.id===p.id; });
       return ex ? prev.map(function(i){ return i.id===p.id ? Object.assign({},i,{qty:i.qty+1}) : i; })
@@ -86,7 +115,7 @@ export default function Vendeuse(props) {
     else setCart(function(prev){ return prev.map(function(i){ return i.id===id ? Object.assign({},i,{qty:q}) : i; }); });
   }
   function removeItem(id) { setCart(function(prev){ return prev.filter(function(i){ return i.id!==id; }); }); }
-  function clearCart() { setCart([]); setClient(""); setNote(""); setActiveTable(null); setDeliveryAddr(""); setDeliveryDriver(""); }
+  function clearCart() { setCart([]); setClient(""); setNote(""); setActiveTable(null); setDeliveryAddr(""); setDeliveryDriver(""); setSelectedClient(null); }
 
   var total = cart.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
 
@@ -162,8 +191,9 @@ export default function Vendeuse(props) {
   // ── Encaisser (appelé par PayModal) ──
   function onPaid(payInfo) {
     var ts = Date.now();
+    var ticketNum = nextTicketNumber();
     var sale = {
-      id:      "VTE-" + ts,
+      id:      ticketNum,
       time:    hm(),
       date:    new Date().toLocaleDateString("fr-CH"),
       store:   store,
@@ -175,6 +205,14 @@ export default function Vendeuse(props) {
       payInfo: payInfo,
     };
     addSale(sale);
+    // Mettre à jour le client si sélectionné
+    if (selectedClient) {
+      updateClient(selectedClient.id, {
+        totalOrders: (selectedClient.totalOrders || 0) + 1,
+        totalSpent:  Math.round(((selectedClient.totalSpent || 0) + total) * 100) / 100,
+        lastVisit:   new Date().toLocaleDateString("fr-CH"),
+      });
+    }
     // Créer commande en production si livraison
     if (showDelivery || deliveryAddr) {
       addOrder({
@@ -292,6 +330,7 @@ export default function Vendeuse(props) {
       tvaInfo:       tv,
       payInfo:       (saleData && saleData.payInfo) || null,
       note:          (saleData && saleData.note) || note || "",
+      tvaNumber:     tvaNumber || "",
     };
     if (printer && printer.printReceipt) {
       printer.printReceipt(receipt).catch(function(err){ console.warn("Print:", err); });
@@ -447,10 +486,10 @@ export default function Vendeuse(props) {
             </div>
             <div style={{marginBottom:12}}>
               <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:4}}>Nom du client</label>
-              <input value={client} onChange={function(e){ setClient(e.target.value); }}
-                placeholder="Nom du client"
-                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #EDE0D0",
-                        fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none",boxSizing:"border-box"}} />
+              <ClientSearch value={client} onChange={setClient} clients={clients}
+                onSelect={function(c){ setClient(c.name); setSelectedClient(c); }}
+                onAddNew={function(name){ var c={id:Date.now(),name:name,phone:"",email:"",notes:"",totalOrders:0,totalSpent:0,lastVisit:new Date().toLocaleDateString("fr-CH")}; addClient(c); setSelectedClient(c); }}
+                placeholder="Nom du client" />
             </div>
             <div style={{marginBottom:12}}>
               <label style={{fontSize:10,color:"#8B7355",display:"block",marginBottom:4}}>Adresse de livraison</label>
@@ -508,7 +547,7 @@ export default function Vendeuse(props) {
       {edit && <EditModal order={edit} onSave={handleSave} onClose={function(){ setEdit(null); }}
                           onModReq={function(id){ updOrder(id,{modReq:true}); }} sendMsg={sendMsg} />}
       {showPay && <PayModal total={total} cart={cart} tenant="BakeryOS" onPaid={onPaid} onClose={function(){ setShowPay(false); }} giftCards={giftCards} useGiftCard={useGiftCard} />}
-      {showReceipt && <ReceiptModal sale={lastSale} tenant="BakeryOS" onClose={function(){ setShowReceipt(false); }} />}
+      {showReceipt && <ReceiptModal sale={lastSale} tenant={tenant} tvaNumber={tvaNumber} onClose={function(){ setShowReceipt(false); }} />}
       {showClient && <ClientDisplay cart={cart} total={total} tenant="BakeryOS" paid={paidAnim} onClose={function(){ setShowClient(false); }} />}
 
       {/* ── Modal création carte cadeau ── */}
@@ -700,7 +739,30 @@ export default function Vendeuse(props) {
             </button>
           );
         })}
-        <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {/* Caisse open/close */}
+          {!registerState ? (
+            <button onClick={function(){ setShowCaisse("open"); }}
+              style={{padding:"5px 11px",borderRadius:18,border:"1px solid #10B981",
+                      background:"rgba(16,185,129,.08)",color:"#065F46",
+                      fontSize:11,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:600}}>
+              💰 Ouvrir caisse
+            </button>
+          ) : (
+            <button onClick={function(){ setShowCaisse("close"); }}
+              style={{padding:"5px 11px",borderRadius:18,border:"1px solid #EF4444",
+                      background:"rgba(239,68,68,.08)",color:"#DC2626",
+                      fontSize:11,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:600}}>
+              🔒 Fermer caisse
+            </button>
+          )}
+          <button onClick={function(){ setShowWaste(true); }}
+            title="Saisir des pertes"
+            style={{padding:"5px 11px",borderRadius:18,border:"1px solid #EDE0D0",
+                    background:"transparent",color:"#8B7355",
+                    fontSize:11,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:600}}>
+            📉 Pertes
+          </button>
           <button onClick={function(){ setShowGiftCard(true); }}
             title="Créer une carte cadeau"
             style={{padding:"5px 11px",borderRadius:18,border:"1px solid #EDE0D0",
@@ -885,6 +947,13 @@ export default function Vendeuse(props) {
                       <div style={{fontFamily:"'Outfit',sans-serif",fontSize:15,fontWeight:700,color:"#C8953A"}}>CHF {s.total.toFixed(2)}</div>
                       <div style={{fontSize:10,color:"#8B7355"}}>{s.time}</div>
                     </div>
+                    <button onClick={function(){ setShowRefund(s); }}
+                      title="Rembourser"
+                      style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(239,68,68,.2)",
+                              background:"rgba(239,68,68,.06)",color:"#DC2626",fontSize:10,cursor:"pointer",
+                              fontFamily:"'Outfit',sans-serif",fontWeight:600,flexShrink:0}}>
+                      ↩ Remb.
+                    </button>
                   </div>
                 );
               })}
@@ -1095,11 +1164,10 @@ export default function Vendeuse(props) {
                 )}
               </div>
               {/* Client */}
-              <input value={client} onChange={function(e){ setClient(e.target.value); }}
-                placeholder={activeTable ? "Table "+activeTable.name : "👤 Client (optionnel)"}
-                style={{width:"100%",padding:"7px 10px",borderRadius:8,border:"1px solid rgba(200,149,58,.25)",
-                        background:"rgba(255,255,255,.05)",color:"#FDF8F0",fontSize:12,outline:"none",
-                        fontFamily:"'Outfit',sans-serif"}} />
+              <ClientSearch value={client} onChange={setClient} clients={clients}
+                onSelect={function(c){ setClient(c.name); setSelectedClient(c); }}
+                onAddNew={function(name){ var c={id:Date.now(),name:name,phone:"",email:"",notes:"",totalOrders:0,totalSpent:0,lastVisit:new Date().toLocaleDateString("fr-CH")}; addClient(c); setSelectedClient(c); }}
+                placeholder={activeTable ? "Table "+activeTable.name : "👤 Client (optionnel)"} />
             </div>
 
             {/* Articles */}
@@ -1226,6 +1294,48 @@ export default function Vendeuse(props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Modals caisse / remboursement / pertes ── */}
+      {showCaisse && (
+        <CaisseModal mode={showCaisse} storeName={myStore}
+          expectedTotal={showCaisse === "close" ? todaySales.filter(function(s){ return s.payInfo && s.payInfo.method === "cash"; }).reduce(function(sum,s){ return sum + (s.payInfo.cashGiven || s.total); }, 0) : 0}
+          onConfirm={function(data){
+            if (showCaisse === "open") {
+              setRegisterState({ openData: data, openTime: data.time, openDate: data.date });
+            } else {
+              // Générer Z-report data
+              var zData = {
+                id: "Z-" + Date.now(),
+                date: data.date, closeTime: data.time,
+                openTime: registerState ? registerState.openTime : "?",
+                openAmount: registerState && registerState.openData ? registerState.openData.total : 0,
+                closeAmount: data.total,
+                diff: data.diff,
+                totalSales: caJour,
+                nbTransactions: nbTx,
+                store: myStore, seller: userName,
+              };
+              // Print Z-report
+              if (printer && printer.printZReport) {
+                printer.printZReport(zData).catch(function(){});
+              }
+              setRegisterState(null);
+            }
+            setShowCaisse(null);
+          }}
+          onClose={function(){ setShowCaisse(null); }}
+        />
+      )}
+      {showRefund && (
+        <RefundModal sale={showRefund} printer={printer}
+          onRefund={function(refundData){ addRefund(refundData); setShowRefund(null); }}
+          onClose={function(){ setShowRefund(null); }} />
+      )}
+      {showWaste && (
+        <WasteModal catalogue={catalogue} storeName={myStore} userName={userName}
+          onSave={addWaste}
+          onClose={function(){ setShowWaste(false); }} />
       )}
     </div>
   );
