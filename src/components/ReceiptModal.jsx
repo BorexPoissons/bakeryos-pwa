@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { hm, computeTVA } from "../utils.js";
 
 export default function ReceiptModal(props) {
@@ -40,17 +40,21 @@ export default function ReceiptModal(props) {
           </div>
           {(function(){
             var tv = sale.tvaInfo || computeTVA(sale.items);
-            return React.createElement("div",{style:{marginTop:4}},
-              tv.lines.map(function(l){
-                return React.createElement("div",{key:l.rate,style:{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B7355",marginBottom:1}},
-                  React.createElement("span",null,"dont TVA "+l.rate+"%"),
-                  React.createElement("span",null,"CHF "+l.tva.toFixed(2))
-                );
-              }),
-              React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B7355",marginTop:2,borderTop:"1px dotted #EDE0D0",paddingTop:3}},
-                React.createElement("span",null,"Total HT"),
-                React.createElement("span",null,"CHF "+tv.totalHT.toFixed(2))
-              )
+            return (
+              <div style={{marginTop:4}}>
+                {tv.lines.map(function(l){
+                  return (
+                    <div key={l.rate} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B7355",marginBottom:1}}>
+                      <span>dont TVA {l.rate}%</span>
+                      <span>CHF {l.tva.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B7355",marginTop:2,borderTop:"1px dotted #EDE0D0",paddingTop:3}}>
+                  <span>Total HT</span>
+                  <span>CHF {tv.totalHT.toFixed(2)}</span>
+                </div>
+              </div>
             );
           })()}
           <div style={{fontSize:11,color:"#8B7355",marginTop:6}}>{methodLabel}
@@ -69,4 +73,3 @@ export default function ReceiptModal(props) {
     </div>
   );
 }
-
