@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { PRODUCTS, STORES, CATS, SM, ROLES, DRIVERS, PERMS_DEF, defaultPerms, GIFTS0, SUBS0, RECIPES0 } from "../constants.js";
 import { hm, computeTVA, generateGiftCode, qrUrl } from "../utils.js";
 import { PrinterService, PAPER } from "../printer.js";
@@ -3951,4 +3951,3 @@ export default function Admin(props) {
     </div>
   );
 }
-
