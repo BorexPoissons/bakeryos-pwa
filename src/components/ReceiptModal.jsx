@@ -5,6 +5,7 @@ export default function ReceiptModal(props) {
   var sale   = props.sale;
   var tenant = props.tenant;
   var onClose= props.onClose;
+  var tvaNumber = props.tvaNumber || "";
   if (!sale) return null;
   var methodLabel = sale.payInfo.method === "card" ? "Carte bancaire" : sale.payInfo.method === "cash" ? "Espèces" : sale.payInfo.method === "giftcard" ? "Carte cadeau" : "Paiement mixte";
   return (
@@ -16,9 +17,13 @@ export default function ReceiptModal(props) {
         <div style={{background:"#1E0E05",padding:"18px 20px",textAlign:"center"}}>
           <div style={{fontSize:22,marginBottom:4}}>🥐</div>
           <div style={{color:"#C8953A",fontFamily:"'Outfit',sans-serif",fontSize:16,fontWeight:700}}>{tenant}</div>
-          <div style={{color:"rgba(253,248,240,.4)",fontSize:10,marginTop:2}}>{sale.time} · {sale.store}</div>
+          <div style={{color:"rgba(253,248,240,.4)",fontSize:10,marginTop:2}}>{sale.id} · {sale.time} · {sale.store}</div>
         </div>
         <div style={{padding:"14px 20px",borderBottom:"1px dashed #EDE0D0"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:10,color:"#8B7355"}}>
+            <span>Client: {sale.client}</span>
+            <span>Vendeur: {sale.seller}</span>
+          </div>
           {sale.items.map(function(i,idx){
             return (
               <div key={idx} style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:12}}>
@@ -53,6 +58,7 @@ export default function ReceiptModal(props) {
           </div>
         </div>
         <div style={{padding:"14px 20px",textAlign:"center"}}>
+          {tvaNumber && <div style={{fontSize:9,color:"#B8A898",marginBottom:4}}>N° TVA: {tvaNumber}</div>}
           <div style={{fontSize:10,color:"#B8A898",marginBottom:8}}>Merci de votre visite ! 🙏</div>
           <button onClick={onClose}
             style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:"#1E0E05",color:"#FDF8F0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
