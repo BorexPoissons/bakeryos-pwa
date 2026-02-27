@@ -209,6 +209,13 @@ export default function App() {
   const [giftCards,     setGiftCards]     = useState(function(){ return lsGet("giftCards", GIFTS0); });
   const [subscriptions, setSubscriptions] = useState(function(){ return lsGet("subscriptions", SUBS0); });
   const [recipes,       setRecipes]       = useState(function(){ return lsGet("recipes", RECIPES0); });
+  // ── Nouveaux états v3.9 ──
+  const [ticketCounter, setTicketCounter] = useState(function(){ return lsGet("ticketCounter", 1); });
+  const [clients,       setClients]       = useState(function(){ return lsGet("clients", []); });
+  const [waste,         setWaste]         = useState(function(){ return lsGet("waste", []); });
+  const [refunds,       setRefunds]       = useState(function(){ return lsGet("refunds", []); });
+  const [registerState, setRegisterState] = useState(function(){ return lsGet("registerState", null); }); // null=fermée, {openData,openTime}
+  const [tvaNumber,     setTvaNumber]     = useState(function(){ return lsGet("tvaNumber", ""); });
   // Session restaurée après mise à jour
   const [showRestored,    setShowRestored]    = useState(false);
   // PWA install prompt
@@ -256,6 +263,22 @@ export default function App() {
   useEffect(function(){ lsSet("giftCards", giftCards); }, [giftCards]);
   useEffect(function(){ lsSet("subscriptions", subscriptions); }, [subscriptions]);
   useEffect(function(){ lsSet("recipes", recipes); }, [recipes]);
+  useEffect(function(){ lsSet("ticketCounter", ticketCounter); }, [ticketCounter]);
+  useEffect(function(){ lsSet("clients", clients); }, [clients]);
+  useEffect(function(){ lsSet("waste", waste); }, [waste]);
+  useEffect(function(){ lsSet("refunds", refunds); }, [refunds]);
+  useEffect(function(){ lsSet("registerState", registerState); }, [registerState]);
+  useEffect(function(){ lsSet("tvaNumber", tvaNumber); }, [tvaNumber]);
+
+  function nextTicketNumber() {
+    var num = ticketCounter;
+    setTicketCounter(num + 1);
+    return "T-" + String(num).padStart(5, "0");
+  }
+  function addClient(c) { setClients(function(prev){ return [c].concat(prev); }); }
+  function updateClient(id, patch) { setClients(function(prev){ return prev.map(function(c){ return c.id === id ? Object.assign({}, c, patch) : c; }); }); }
+  function addWaste(entry) { setWaste(function(prev){ return [entry].concat(prev); }); }
+  function addRefund(entry) { setRefunds(function(prev){ return [entry].concat(prev); }); }
 
   function addGiftCard(card) { setGiftCards(function(prev){ return [card].concat(prev); }); }
   function useGiftCard(code, amount) {
@@ -358,7 +381,7 @@ export default function App() {
               markRead={function(){ setSeenCount(otherMsgs); }}
               goRole={function(r){ setViewRole(r); }}
               onLogout={function(){ setCurrentUser(null); setChatOpen(false); setSeenCount(0); }}>
-        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} userName={userName} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} tenant={tenant} giftCards={giftCards} addGiftCard={addGiftCard} useGiftCard={useGiftCard} printer={printer} />}
+        {displayRole === "vendeuse"   && <Vendeuse   orders={orders} addOrder={addOrder} updOrder={updOrder} sendMsg={sendMsg} userStore={userStore} userName={userName} catalogue={catalogue} sales={sales} addSale={addSale} chat={chat} tableLayouts={tableLayouts} tableSessions={tableSessions} setTableSessions={setTableSessions} tenant={tenant} giftCards={giftCards} addGiftCard={addGiftCard} useGiftCard={useGiftCard} printer={printer} nextTicketNumber={nextTicketNumber} clients={clients} addClient={addClient} updateClient={updateClient} registerState={registerState} setRegisterState={setRegisterState} refunds={refunds} addRefund={addRefund} waste={waste} addWaste={addWaste} tvaNumber={tvaNumber} />}
         {displayRole === "production" && <Production orders={orders} updOrder={updOrder} chat={chat} sendMsg={sendMsg} recipes={recipes} catalogue={catalogue} printer={printer} />}
         {displayRole === "livreur"    && <Livreur    orders={orders} updOrder={updOrder} userStore={userStore} currentUser={currentUser} />}
         {(displayRole === "admin" || displayRole === "gerant" || (role==="admin" && !viewRole)) && (
@@ -376,6 +399,10 @@ export default function App() {
             subscriptions={subscriptions} setSubscriptions={setSubscriptions}
             recipes={recipes} setRecipes={setRecipes}
             printer={printer}
+            waste={waste} addWaste={addWaste}
+            refunds={refunds}
+            clients={clients} setClients={setClients}
+            tvaNumber={tvaNumber} setTvaNumber={setTvaNumber}
           />
         )}
       </Layout>
