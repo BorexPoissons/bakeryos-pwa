@@ -3704,9 +3704,6 @@ export default function Admin(props) {
             setSavedMsg("✅ Rapport marges exporté"); setTimeout(function(){ setSavedMsg(""); },3000);
           }
 
-          // SVG chart dimensions
-          var chartW = 520, chartH = 120, barW = Math.max(4, Math.min(16, (chartW-20)/trendData.length - 2));
-
           return (
             <div>
               {/* Demo data loader + empty state */}
@@ -3788,39 +3785,145 @@ export default function Admin(props) {
               )}
 
               {/* Graphique CA tendance */}
-              <div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,.06)",marginBottom:16}}>
-                <div style={{fontWeight:600,color:"#1E0E05",fontSize:12,marginBottom:12}}>📈 Évolution du chiffre d'affaires en CHF ({periodLabel})</div>
-                {trendData.length<=1 ? (
-                  <div style={{textAlign:"center",color:"#8B7355",fontSize:11,padding:"20px 0"}}>Pas assez de données pour un graphique</div>
-                ) : (
-                  <svg width="100%" viewBox={"0 0 "+(chartW+10)+" "+(chartH+25)} style={{overflow:"visible"}}>
-                    {[0,0.25,0.5,0.75,1].map(function(t){
-                      var y=chartH-t*chartH;
-                      return <g key={t}>
-                        <line x1="0" y1={y} x2={chartW} y2={y} stroke="#F0E8DC" strokeWidth=".5"/>
-                        <text x={chartW+2} y={y+3} fontSize="7" fill="#8B7355">{"CHF "+(maxDayCA*t).toFixed(0)}</text>
-                      </g>;
-                    })}
-                    {trendData.map(function(d,i){
-                      var x = 5 + i*(chartW/trendData.length);
-                      var h = d.ca>0 ? Math.max(2, d.ca/maxDayCA*chartH) : 0;
-                      var isToday = d.date===todayS;
-                      return <g key={i}>
-                        <rect x={x} y={chartH-h} width={barW} height={h} rx="2"
-                          fill={isToday?"#C8953A":"#DBC9A8"} opacity={d.ca>0?1:.3}>
-                          <title>{d.label+" — CHF "+d.ca.toFixed(2)}</title>
-                        </rect>
-                        {d.ca>0 && trendData.length<=15 && (
-                          <text x={x+barW/2} y={chartH-h-3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#1E0E05">{d.ca.toFixed(0)}</text>
-                        )}
-                        {(trendData.length<=15 || i%Math.ceil(trendData.length/15)===0) && (
-                          <text x={x+barW/2} y={chartH+12} textAnchor="middle" fontSize="7" fill="#8B7355">{d.label}</text>
-                        )}
-                      </g>;
-                    })}
-                  </svg>
-                )}
-              </div>
+              {(function(){
+                // Filter only days with actual sales for sparse data view
+                var activeDays = trendData.filter(function(d){return d.ca>0;});
+                var fillRate = trendData.length > 0 ? activeDays.length / trendData.length : 0;
+                var isSparse = fillRate < 0.25 && activeDays.length > 0;
+                var isEmpty = activeDays.length === 0;
+                // For sparse data, show a compact card-based view instead of empty chart
+                var displayData = isSparse ? activeDays : trendData;
+                var cW = 520, cH = 130;
+                var bW = isSparse
+                  ? Math.min(60, Math.max(28, (cW - 40) / Math.max(displayData.length, 1) - 8))
+                  : Math.max(4, Math.min(18, (cW - 20) / displayData.length - 2));
+
+                // Compute cumulative for area path
+                var caValues = displayData.map(function(d){return d.ca;});
+                var localMax = caValues.reduce(function(m,v){return Math.max(m,v);}, 1);
+
+                // Summary stats
+                var totalPeriodCA = trendData.reduce(function(a,d){return a+d.ca;},0);
+                var bestDay = trendData.reduce(function(best,d){return d.ca>best.ca?d:best;},{ca:0,label:"-",date:""});
+                var avgDayCA = activeDays.length > 0 ? totalPeriodCA / activeDays.length : 0;
+
+                return (
+                  <div style={{background:"#fff",borderRadius:16,boxShadow:"0 2px 12px rgba(0,0,0,.06)",marginBottom:16,overflow:"hidden"}}>
+                    {/* Header with summary */}
+                    <div style={{background:"linear-gradient(135deg,#1E0E05,#2D1A0B)",padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+                      <div>
+                        <div style={{fontSize:10,color:"rgba(253,248,240,.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>📈 Chiffre d'affaires · {periodLabel}</div>
+                        <div style={{fontSize:24,fontWeight:800,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {totalPeriodCA.toFixed(2)}</div>
+                      </div>
+                      <div style={{display:"flex",gap:16}}>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:14,fontWeight:700,color:"#FDF8F0",fontFamily:"'Outfit',sans-serif"}}>{activeDays.length}</div>
+                          <div style={{fontSize:8,color:"rgba(253,248,240,.35)",textTransform:"uppercase",letterSpacing:.5}}>jour{activeDays.length>1?"s":""} actif{activeDays.length>1?"s":""}</div>
+                        </div>
+                        <div style={{width:1,background:"rgba(253,248,240,.1)"}}/>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:14,fontWeight:700,color:"#FDF8F0",fontFamily:"'Outfit',sans-serif"}}>CHF {avgDayCA.toFixed(0)}</div>
+                          <div style={{fontSize:8,color:"rgba(253,248,240,.35)",textTransform:"uppercase",letterSpacing:.5}}>Ø / jour</div>
+                        </div>
+                        <div style={{width:1,background:"rgba(253,248,240,.1)"}}/>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:14,fontWeight:700,color:"#C8953A",fontFamily:"'Outfit',sans-serif"}}>CHF {bestDay.ca.toFixed(0)}</div>
+                          <div style={{fontSize:8,color:"rgba(253,248,240,.35)",textTransform:"uppercase",letterSpacing:.5}}>Meilleur ({bestDay.label})</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{padding:"16px 20px"}}>
+                    {isEmpty ? (
+                      <div style={{textAlign:"center",padding:"30px 0"}}>
+                        <div style={{fontSize:36,marginBottom:8,opacity:.3}}>📊</div>
+                        <div style={{fontSize:13,fontWeight:600,color:"#B8A898",marginBottom:4}}>Aucune vente sur cette période</div>
+                        <div style={{fontSize:11,color:"#D5C4B0"}}>Sélectionnez une autre période ou chargez les données démo</div>
+                      </div>
+                    ) : isSparse ? (
+                      /* ── Sparse mode: cards for each active day ── */
+                      <div>
+                        <div style={{fontSize:10,color:"#8B7355",marginBottom:10,textTransform:"uppercase",letterSpacing:.8}}>Détail par jour</div>
+                        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                          {activeDays.map(function(d,i){
+                            var pct = d.ca / localMax * 100;
+                            return (
+                              <div key={i} style={{flex:"1 1 120px",maxWidth:180,background:"#F7F3EE",borderRadius:12,padding:"14px 16px",border:"1.5px solid #EDE0D0",position:"relative",overflow:"hidden"}}>
+                                {/* Background bar */}
+                                <div style={{position:"absolute",bottom:0,left:0,right:0,height:(pct*0.35)+"%",background:"linear-gradient(to top,rgba(200,149,58,.12),transparent)",borderRadius:"0 0 12px 12px"}}/>
+                                <div style={{position:"relative"}}>
+                                  <div style={{fontSize:10,color:"#8B7355",fontWeight:500,marginBottom:4}}>{d.label}</div>
+                                  <div style={{fontSize:9,color:"#B8A898",marginBottom:6}}>{d.date}</div>
+                                  <div style={{fontSize:20,fontWeight:800,color:"#1E0E05",fontFamily:"'Outfit',sans-serif"}}>CHF {d.ca.toFixed(2)}</div>
+                                  <div style={{marginTop:8,height:5,background:"#EDE0D0",borderRadius:3}}>
+                                    <div style={{height:"100%",borderRadius:3,background:"linear-gradient(90deg,#C8953A,#E8B86D)",width:pct+"%",transition:"width .6s ease"}}/>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      /* ── Dense mode: bar chart ── */
+                      <svg width="100%" viewBox={"0 0 "+(cW+40)+" "+(cH+25)} style={{overflow:"visible"}}>
+                        <defs>
+                          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#C8953A"/>
+                            <stop offset="100%" stopColor="#a07228"/>
+                          </linearGradient>
+                          <linearGradient id="barGradLight" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#DBC9A8"/>
+                            <stop offset="100%" stopColor="#E8DCC8"/>
+                          </linearGradient>
+                        </defs>
+                        {/* Grid lines */}
+                        {[0,0.25,0.5,0.75,1].map(function(t){
+                          var y=cH-t*cH;
+                          return <g key={t}>
+                            <line x1="30" y1={y} x2={cW} y2={y} stroke="#F0E8DC" strokeWidth=".5" strokeDasharray={t===0?"":"2,3"}/>
+                            <text x="0" y={y+3} fontSize="7" fill="#B8A898" fontFamily="'Outfit',sans-serif">{"CHF "+(localMax*t).toFixed(0)}</text>
+                          </g>;
+                        })}
+                        {/* Bars */}
+                        {displayData.map(function(d,i){
+                          var x = 35 + i*((cW-40)/displayData.length);
+                          var h = d.ca>0 ? Math.max(3, d.ca/localMax*cH) : 0;
+                          var isToday = d.date===todayS;
+                          var isBest = d.ca === bestDay.ca && d.ca > 0;
+                          return <g key={i}>
+                            {/* Bar shadow */}
+                            {d.ca>0 && <rect x={x+1} y={cH-h+2} width={bW} height={h} rx="3" fill="rgba(0,0,0,.04)"/>}
+                            {/* Bar */}
+                            <rect x={x} y={cH-h} width={bW} height={h} rx="3"
+                              fill={isToday?"url(#barGrad)":d.ca>0?"url(#barGradLight)":"#F5F0EB"} opacity={d.ca>0?1:.3}>
+                              <title>{d.label+" — CHF "+d.ca.toFixed(2)}</title>
+                            </rect>
+                            {/* Best day marker */}
+                            {isBest && <circle cx={x+bW/2} cy={cH-h-6} r="2.5" fill="#C8953A"/>}
+                            {/* Value label */}
+                            {d.ca>0 && displayData.length<=20 && (
+                              <text x={x+bW/2} y={cH-h-4-(isBest?4:0)} textAnchor="middle" fontSize="6.5" fontWeight="700" fill="#1E0E05" fontFamily="'Outfit',sans-serif">{d.ca.toFixed(0)}</text>
+                            )}
+                            {/* Date label */}
+                            {(displayData.length<=20 || i%Math.ceil(displayData.length/18)===0) && (
+                              <text x={x+bW/2} y={cH+12} textAnchor="middle" fontSize="7" fill={isToday?"#C8953A":"#B8A898"} fontWeight={isToday?"700":"400"} fontFamily="'Outfit',sans-serif">{d.label}</text>
+                            )}
+                          </g>;
+                        })}
+                        {/* Today indicator line */}
+                        {(function(){
+                          var todayIdx = displayData.findIndex(function(d){return d.date===todayS;});
+                          if(todayIdx<0) return null;
+                          var x = 35 + todayIdx*((cW-40)/displayData.length) + bW/2;
+                          return <line x1={x} y1={0} x2={x} y2={cH} stroke="#C8953A" strokeWidth="0.5" strokeDasharray="3,3" opacity=".4"/>;
+                        })()}
+                      </svg>
+                    )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
                 {/* Rapport TVA */}
