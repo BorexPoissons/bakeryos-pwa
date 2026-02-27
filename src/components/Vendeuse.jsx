@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { PRODUCTS, STORES, CATS, SM, DRIVERS } from "../constants.js";
 import { hm, computeTVA, generateGiftCode, qrUrl } from "../utils.js";
 import PayModal from "./PayModal.jsx";
@@ -571,10 +571,14 @@ export default function Vendeuse(props) {
                         color:"#1E0E05",background:"#F7F3EE",transition:"border-color .15s"}} />
               <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap",justifyContent:"center"}}>
                 {[10,20,25,50,75,100,150,200].map(function(v){
-                  return React.createElement("button",{key:v,onClick:function(){setGiftAmount(String(v));},
-                    style:{padding:"6px 12px",borderRadius:8,border:"1px solid "+(giftAmount==String(v)?"#C8953A":"#EDE0D0"),
-                           background:giftAmount==String(v)?"#FDF0D8":"#fff",color:giftAmount==String(v)?"#92400E":"#5C4A32",
-                           fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",transition:"all .12s"}},v+" CHF");
+                  return (
+                    <button key={v} onClick={function(){setGiftAmount(String(v));}}
+                      style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(giftAmount==String(v)?"#C8953A":"#EDE0D0"),
+                             background:giftAmount==String(v)?"#FDF0D8":"#fff",color:giftAmount==String(v)?"#92400E":"#5C4A32",
+                             fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Outfit',sans-serif",transition:"all .12s"}}>
+                      {v+" CHF"}
+                    </button>
+                  );
                 })}
               </div>
               <div style={{marginTop:14}}>
@@ -1221,17 +1225,21 @@ export default function Vendeuse(props) {
               </div>
               {cart.length>0 && (function(){
                 var tv=computeTVA(cart);
-                return React.createElement("div",{style:{marginBottom:10}},
-                  tv.lines.map(function(l){
-                    return React.createElement("div",{key:l.rate,style:{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(253,248,240,.35)",marginBottom:1}},
-                      React.createElement("span",null,"TVA "+l.rate+"%"),
-                      React.createElement("span",null,"CHF "+l.tva.toFixed(2))
-                    );
-                  }),
-                  React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(253,248,240,.3)",borderTop:"1px dotted rgba(255,255,255,.1)",paddingTop:2,marginTop:2}},
-                    React.createElement("span",null,"HT"),
-                    React.createElement("span",null,"CHF "+tv.totalHT.toFixed(2))
-                  )
+                return (
+                  <div style={{marginBottom:10}}>
+                    {tv.lines.map(function(l){
+                      return (
+                        <div key={l.rate} style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(253,248,240,.35)",marginBottom:1}}>
+                          <span>TVA {l.rate}%</span>
+                          <span>CHF {l.tva.toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(253,248,240,.3)",borderTop:"1px dotted rgba(255,255,255,.1)",paddingTop:2,marginTop:2}}>
+                      <span>HT</span>
+                      <span>CHF {tv.totalHT.toFixed(2)}</span>
+                    </div>
+                  </div>
                 );
               })()}
               {cartErr && (
@@ -1340,4 +1348,3 @@ export default function Vendeuse(props) {
     </div>
   );
 }
-
