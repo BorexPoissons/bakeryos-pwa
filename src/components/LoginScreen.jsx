@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { APP_VERSION, ROLES } from "../constants.js";
 
 export default function LoginScreen(props) {
@@ -197,5 +197,3 @@ export default function LoginScreen(props) {
     </div>
   );
 }
-
-
